@@ -864,10 +864,33 @@ draws page 0 only — the web UI handles per-page overlays itself.
   boxed/dimmed image + zoom crop, two-way selection, front/back tabs) → `DoneScreen`.
   Build: `cd web && npm install && npm run build`; the API then serves it on `:8000`.
   Dev: `npm run dev` on `:5173` proxies `/api`.
-- Total tests: 98.
+
+**Done: realistic fixture corpus** (commits `143ee1a`, `7aed4a0`).
+
+- `fixtures/realistic.py` → `fixtures/cases_realistic.json` + `fixtures/images_realistic/`
+  (committed, not gitignored — the renders need system fonts). 16 labels with colour,
+  gradients, framed borders, Copperplate/Baskerville/slab display faces, a medallion, a
+  barcode, boxed and one rotated (sidebar) warning; ~half then degraded (rotate, keystone
+  via `Image.QUAD`, vignette, blur, JPEG). Graded `exact` (styling only — full match) vs
+  `loose` (degraded — a clean field may soften, a real defect must never PASS).
+- `tests/test_realistic.py` (27 tests, marked `corpus` + `realistic`). `report.py` prints
+  a REALISTIC CORPUS section.
+- It caught real bugs, now fixed: **prominence filter overfit** (was a fraction of the
+  single tallest word → excluded real class/type text; now a multiple of the *median*
+  height, `BRAND_PROMINENCE=1.8` / `SUBHEAD_PROMINENCE=0.9`); **no cross-line matching**
+  (a wrapped brand couldn't be assembled → `_blocks()` groups adjacent prominent lines);
+  **W-2 counted post-warning label text** (barcode digits after the statement → false
+  FAIL; `compare_wording` now drops trailing tokens with no reference counterpart, and
+  `_BLOCK_SPAN` is `+6` not `+12`); **OCR TSV decode** crashed on non-cp1252 bytes (now
+  `encoding="utf-8", errors="replace"`).
+- Result: 9/9 exact match, 0 false approvals across all 16, p95 ~630 ms. The remaining
+  `loose` gaps are all rotation/perspective/low-light → the degradation-set + deskew work.
+
+- Total tests: 125.
 
 **Still to do**, priority order: batch upload + SSE streaming → CSV manifest + pre-flight
-(§3.4) → VLM recorded-cassette test → degradation set + preprocessing → CI → container +
+(§3.4) → VLM recorded-cassette test → **degradation-set preprocessing (deskew / perspective
+correction) — the realistic `loose` cases are the fixtures for it** → CI → container +
 deploy. Deploy target (with the user): frontend on **Vercel**, backend container on
 **Render/Fly** (Azure Container Apps only if the TTB-infra story is wanted).
 

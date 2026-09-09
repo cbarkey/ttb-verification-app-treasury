@@ -38,9 +38,10 @@ every check is `UNREADABLE` and nothing is auto-approved (requirement N-06).
 ## Run — core + tests
 
 ```bash
-python -m fixtures.generate          # render the 16-label corpus + ground truth
-pytest                               # 98 tests: unit + golden/accuracy + API contract
-python report.py                     # accuracy + latency report; writes review overlays
+python -m fixtures.generate           # render the clean 16-label corpus + ground truth
+python -m fixtures.realistic          # (re)render the realistic corpus — needs system fonts
+pytest                                # 125 tests: unit + golden + realistic + API contract
+python report.py                      # accuracy + latency for both corpora; review overlays
 ```
 
 Verify a single application from the CLI:
@@ -106,8 +107,10 @@ Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swep
 | Per-stage latency measured and reported (N-03) | done |
 | **FastAPI service** — `POST /api/verify`, session store, decisions, finalize | done |
 | **React review UI** — single-label form, result screen, split-pane review (design 2.5) | done |
+| **Realistic fixture corpus** — colour / serif / borders / boxed & rotated warnings / photos | done |
 | Conditional VLM fallback behind an interface, with a working `NullVlm` (design 2.4) | interface + Null path done; Claude adapter wired, recorded-cassette test to come |
-| Batch upload + streaming, CSV manifest + pre-flight, degradation set, CI, container, deploy | not yet |
+| Batch upload + streaming, CSV manifest + pre-flight, CI, container, deploy | not yet |
+| Degradation-set preprocessing (deskew / perspective correction) | fixtures exist (realistic `loose` cases); preprocessing not yet |
 
 ## Measured on the fixture corpus
 
@@ -122,7 +125,34 @@ review rate                  9.9%       (reported, not gated)
 ```
 
 `report.py` also burns the review-overlay boxes into `out/overlay_*.png` — the same
-`CheckResult.box` coordinates the Phase 1 split-pane review screen will draw.
+`CheckResult.box` coordinates the split-pane review screen draws.
+
+### Realistic corpus
+
+The clean corpus above is black text on white — it proves the rules but barely stresses
+OCR. `fixtures/realistic.py` renders 16 labels that look like real ones: colour grounds and
+gradients, framed borders, Copperplate / Baskerville / slab-serif display faces, a
+medallion, a barcode, ABV + net contents in one field of vision, and the government warning
+as a small justified block, ruled into a box, or (one case) rotated onto a side panel. Half
+the set then gets a *photo of the bottle* pass — rotation, keystone, a lighting vignette,
+blur, JPEG compression.
+
+Cases are graded **`exact`** (styling only — every check must match ground truth, like the
+clean corpus) and **`loose`** (degraded — a clean field may soften to `REVIEW`/`UNREADABLE`,
+but a genuine defect must never read `PASS`). The gate that never relaxes: **zero false
+approvals** across the whole set.
+
+```
+exact-grade cases matching ground truth   9 / 9
+false approvals (all 16 cases)             0
+latency p95                                ~630 ms
+```
+
+Building this corpus caught four real robustness bugs (prominence filter overfit to clean
+sizes, no cross-line matching for wrapped brand names, W-2 counting the barcode number that
+follows the warning, an OCR TSV decode crash on non-Latin bytes) — all now fixed. The
+remaining `loose`-case gaps are all rotation / perspective / low light, i.e. the
+degradation-set preprocessing (deskew) that's still to come.
 
 ## Design decisions worth calling out
 
@@ -220,7 +250,8 @@ service/
 web/
   src/screens/    SingleLabelForm · ResultScreen · ReviewScreen (+ LabelViewer) · DoneScreen
 fixtures/
-  generate.py     renders 16 synthetic labels + exact ground truth -> cases.json
-tests/            unit (normalize, parsers, warning, rules) + golden/accuracy + API contract
-report.py         accuracy + latency report; renders review-overlay PNGs
+  generate.py     renders the clean 16-label corpus + ground truth -> cases.json
+  realistic.py    renders the realistic corpus (colour/serif/borders/photos) -> cases_realistic.json
+tests/            unit (normalize, parsers, warning, rules) + golden + realistic + API contract
+report.py         accuracy + latency for both corpora; renders review-overlay PNGs
 ```
