@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Generated fixture images (regenerable via `python -m fixtures.generate`)
+fixtures/images/
+
+# Report output
+out/
+
+# Env
+.env

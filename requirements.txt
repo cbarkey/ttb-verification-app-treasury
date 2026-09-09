@@ -1,0 +1,8 @@
+# Runtime dependencies for the verification core (Phase 0).
+# Deliberately minimal: the no-egress fallback (N-06) means the core must not
+# depend on any network service or heavyweight ML stack.
+Pillow>=10,<13
+
+# Optional: the conditional VLM fallback (design 2.4). The core runs without it
+# via NullVlm; ClaudeVlm is only constructed when ANTHROPIC_API_KEY is set.
+anthropic>=0.40
