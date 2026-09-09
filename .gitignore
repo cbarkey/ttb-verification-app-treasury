@@ -11,5 +11,10 @@ fixtures/images/
 # Report output
 out/
 
+# Frontend
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+
 # Env
 .env
