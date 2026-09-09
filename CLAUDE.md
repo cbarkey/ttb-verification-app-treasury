@@ -842,6 +842,22 @@ Decisions made during implementation, to preserve:
   the normalization ladder — never a blind PASS. Not exercised by Phase 0 tests (no
   network); Phase 1 adds a recorded-cassette test.
 
+### Known follow-ups for Phase 1 (found via report.py overlays)
+
+The Phase 0 *outcomes* are all correct, but `CheckResult.box` / `observed` are not yet
+review-screen quality:
+
+- **Non-matching text fields point at garbage.** `_locate_text` returns the best-ranked
+  window even for a FAIL, so `brand` on `brand_mismatch` "matches" a fuzzy fragment of the
+  back-label warning ("of the risk"). For the review screen: on FAIL, show the most
+  *prominent* candidate (the actual brand printed large on the label), not the
+  highest-similarity fragment.
+- **`_locate_pattern` boxes balloon.** It unions neighbour words that can span several
+  lines/columns, so e.g. `net_contents` gets a 465×673 box. Constrain to same-line
+  neighbours, or just box the matched token.
+- **`report.py` overlay only draws page 0.** Warning boxes live on the back label; the
+  review screen's image tabs (F-08) will need per-page overlays.
+
 ### Phase 1 — not started
 
 Priority order per §2.7: review screen (§2.5) → API + batch/streaming → multi-image +
