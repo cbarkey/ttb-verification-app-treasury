@@ -83,15 +83,26 @@ class Location:
     mean_conf: float
 
 
+def _line_window(line: list[OcrWord], want: int) -> list[OcrWord]:
+    return line[: want + 2] if len(line) > want + 2 else line
+
+
 def _locate_text(
     pages: list[OcrPage], declared: str, *, prominent_only: bool
 ) -> Location | None:
     """Best matching window of consecutive words for `declared`.
 
     Returns None when there is no candidate text at all (→ UNREADABLE upstream).
+
+    On a FAIL for a prominence-filtered field, the highest-*similarity* fragment
+    is usually noise (a stray word in fine print or the warning block). What the
+    agent needs to see is the text that is actually printed prominently — so the
+    box/observed fall back to the most prominent candidate line, while the
+    outcome stays FAIL.
     """
     want = max(1, len(declared.split()))
     best: Location | None = None
+    prominent: tuple[int, int, Location] | None = None  # (height, -top, loc)
 
     for page in pages:
         if not page.words:
@@ -99,39 +110,61 @@ def _locate_text(
         threshold = PROMINENCE * page.max_word_height if prominent_only else 0
         for line in _iter_lines(page.words):
             cand = [w for w in line if w.box.height >= threshold]
+            if not cand:
+                continue
+
+            if prominent_only:
+                head = _line_window(cand, want)
+                text = " ".join(w.text for w in head)
+                loc = Location(
+                    match=compare(declared, text),
+                    box=BoundingBox.enclosing(w.box for w in head),
+                    page_index=page.index, page_role=page.role, observed=text,
+                    mean_conf=sum(w.conf for w in head) / len(head),
+                )
+                key = (max(w.box.height for w in head), -min(w.box.top for w in head))
+                if prominent is None or key > prominent[:2]:
+                    prominent = (*key, loc)
+
             for start in range(len(cand)):
                 for length in range(1, min(want + 1, len(cand) - start) + 1):
                     window = cand[start : start + length]
                     text = " ".join(w.text for w in window)
                     m = compare(declared, text)
-                    loc = Location(
-                        match=m,
-                        box=BoundingBox.enclosing(w.box for w in window),
-                        page_index=page.index,
-                        page_role=page.role,
-                        observed=text,
-                        mean_conf=sum(w.conf for w in window) / len(window),
-                    )
                     if best is None or _rank(m) > _rank(best.match):
-                        best = loc
+                        best = Location(
+                            match=m,
+                            box=BoundingBox.enclosing(w.box for w in window),
+                            page_index=page.index, page_role=page.role,
+                            observed=text,
+                            mean_conf=sum(w.conf for w in window) / len(window),
+                        )
+
+    if best is None:
+        return None
+    if best.match.outcome is Outcome.FAIL and prominent is not None:
+        keep = prominent[2]
+        return Location(best.match, keep.box, keep.page_index, keep.page_role,
+                        keep.observed, keep.mean_conf)
     return best
 
 
 def _locate_pattern(
-    pages: list[OcrPage], token_re: re.Pattern[str], *, context: int = 2
+    pages: list[OcrPage], token_re: re.Pattern[str]
 ) -> tuple[BoundingBox | None, int, str | None, str]:
-    """Find the first word matching `token_re`; return a box spanning it plus a
-    few neighbouring words for a legible overlay."""
+    """Find the first word matching `token_re`; return a box around its whole
+    OCR line (block/par/line), which is the natural unit to highlight."""
     for page in pages:
-        for i, w in enumerate(page.words):
-            if token_re.search(w.text):
-                span = page.words[max(0, i - 1) : i + 1 + context]
-                return (
-                    BoundingBox.enclosing(x.box for x in span),
-                    page.index,
-                    page.role,
-                    " ".join(x.text for x in span),
-                )
+        for w in page.words:
+            if not token_re.search(w.text):
+                continue
+            key = (w.block, w.par, w.line)
+            line = [x for x in page.words if (x.block, x.par, x.line) == key]
+            return (
+                BoundingBox.enclosing(x.box for x in line),
+                page.index, page.role,
+                " ".join(x.text for x in line),
+            )
     return (None, 0, None, "")
 
 
