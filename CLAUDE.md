@@ -842,26 +842,35 @@ Decisions made during implementation, to preserve:
   the normalization ladder — never a blind PASS. Not exercised by Phase 0 tests (no
   network); Phase 1 adds a recorded-cassette test.
 
-### Known follow-ups for Phase 1 (found via report.py overlays)
+Box-quality follow-ups from the report.py overlays — **fixed** (commit `2aea4ba`):
+`_locate_text` now falls back to the most prominent candidate line on a FAIL for a
+prominence-filtered field (so `brand_mismatch` boxes "RUSTY ANCHOR RUM", not a warning
+fragment); `_locate_pattern` boxes only the matched OCR line. `report.py` overlay still
+draws page 0 only — the web UI handles per-page overlays itself.
 
-The Phase 0 *outcomes* are all correct, but `CheckResult.box` / `observed` are not yet
-review-screen quality:
+### Phase 1 — in progress
 
-- **Non-matching text fields point at garbage.** `_locate_text` returns the best-ranked
-  window even for a FAIL, so `brand` on `brand_mismatch` "matches" a fuzzy fragment of the
-  back-label warning ("of the risk"). For the review screen: on FAIL, show the most
-  *prominent* candidate (the actual brand printed large on the label), not the
-  highest-similarity fragment.
-- **`_locate_pattern` boxes balloon.** It unions neighbour words that can span several
-  lines/columns, so e.g. `net_contents` gets a 465×673 box. Constrain to same-line
-  neighbours, or just box the matched token.
-- **`report.py` overlay only draws page 0.** Warning boxes live on the back label; the
-  review screen's image tabs (F-08) will need per-page overlays.
+**Done: single-label web path (the §2.5 priority).**
 
-### Phase 1 — not started
+- `service/` — FastAPI. `POST /api/verify` (multipart: declared-fields JSON + image
+  uploads) runs the pipeline and returns `{session_id, result, images}`. In-memory
+  `SessionStore` (N-05), TTL-swept. `/api/sessions/{id}` (+ `/images/{i}` served from
+  memory), `/decisions` (accept|reject on REVIEW items; reports `can_finalize` — FAIL
+  items don't block), `/finalize` (approve|reject|request_image), `/health`. Serves
+  `web/dist` as an SPA when built. 8 contract tests in `tests/test_api.py` (marked
+  `corpus`, need tesseract).
+- `web/` — Vite + React + Tailwind v4. `SingleLabelForm` → `ResultScreen` (one primary
+  action per design 2.5.1) → `ReviewScreen` split-pane (`LabelViewer` does the
+  boxed/dimmed image + zoom crop, two-way selection, front/back tabs) → `DoneScreen`.
+  Build: `cd web && npm install && npm run build`; the API then serves it on `:8000`.
+  Dev: `npm run dev` on `:5173` proxies `/api`.
+- Total tests: 98.
 
-Priority order per §2.7: review screen (§2.5) → API + batch/streaming → multi-image +
-manifest pre-flight → VLM cassette test → degradation set + preprocessing → CI → deploy.
-Deploy target (decided with the user): **frontend on Vercel, backend container on
-Render/Fly** (Azure Container Apps only if the TTB-infra story is wanted). Stack: React +
-Vite + Tailwind.
+**Still to do**, priority order: batch upload + SSE streaming → CSV manifest + pre-flight
+(§3.4) → VLM recorded-cassette test → degradation set + preprocessing → CI → container +
+deploy. Deploy target (with the user): frontend on **Vercel**, backend container on
+**Render/Fly** (Azure Container Apps only if the TTB-infra story is wanted).
+
+Web-UI polish deferred: the zoom crop for the full warning block is necessarily small;
+right pane has whitespace below the image on wide screens; no keyboard nav between review
+items yet.

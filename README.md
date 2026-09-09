@@ -1,13 +1,17 @@
-# TTB Label Verification — Phase 0
+# TTB Label Verification
 
-Verification core for the AI-powered alcohol label verification take-home. This is the
-**Phase 0 slice** of the design in [`CLAUDE.md`](CLAUDE.md): the fixture corpus, the rules
-engine, real OCR, the health-warning checks, and the accuracy gates — driven from a CLI.
-No web UI, batch endpoint, or deployment yet; those are Phase 1.
+AI-powered alcohol label verification take-home. Full design and rationale in
+[`CLAUDE.md`](CLAUDE.md) (Section 2 is the technical design; Section 3 is the list of
+implementation pitfalls each rule is built and tested against).
 
-> Why the design lives in `CLAUDE.md`: this repo was scaffolded from a design-and-brief
-> handoff document. Section 2 of that file is the technical design; Section 3 is the list of
-> implementation pitfalls each rule here is built (and tested) against.
+**Where it is now**
+
+- **Phase 0 — done.** Verification core: fixture corpus, the rules engine, real Tesseract
+  OCR, the health-warning checks W-1..W-4, accuracy gates. CLI: `python -m ttbverify`.
+- **Phase 1 — in progress.** FastAPI service + a React review UI for the single-label
+  path: upload → result → the split-pane review screen (design 2.5), the priority of this
+  phase. Still to come: batch upload + streaming, CSV manifest + pre-flight, the
+  degradation set, CI, and deployment.
 
 ## Setup
 
@@ -31,11 +35,11 @@ The code finds the binary on `PATH`, via `TESSERACT_CMD`, or at the standard ins
 location. With no Tesseract present the pipeline still runs — in a **degraded mode** where
 every check is `UNREADABLE` and nothing is auto-approved (requirement N-06).
 
-## Run
+## Run — core + tests
 
 ```bash
 python -m fixtures.generate          # render the 16-label corpus + ground truth
-pytest                               # 90 tests: unit + golden/accuracy + contract
+pytest                               # 98 tests: unit + golden/accuracy + API contract
 python report.py                     # accuracy + latency report; writes review overlays
 ```
 
@@ -51,7 +55,42 @@ python -m ttbverify path/to/application.json --json # machine-readable result
 the `"application"` block in `fixtures/cases.json`. Image paths resolve relative to the
 JSON file.
 
-## What Phase 0 does
+## Run — the web app
+
+```bash
+# 1. build the frontend once (outputs web/dist, which the API serves)
+cd web && npm install && npm run build && cd ..
+
+# 2. start the service
+python -m service                    # http://127.0.0.1:8000  (HOST / PORT env vars)
+```
+
+Open <http://127.0.0.1:8000>: enter the declared fields, drop the label image(s), press
+**Verify label**. A clean result offers **Approve**; anything else opens the split-pane
+**review screen** — checks on the left (needs-attention first), the label on the right with
+the active field's region boxed and a zoomed crop beneath it, and per-item decisions in the
+agent's own words. The footer's **Approve** unlocks once every review item is resolved.
+
+For frontend development with hot reload, run the API on `:8000` and Vite separately:
+
+```bash
+cd web && npm run dev                # http://127.0.0.1:5173, proxies /api to :8000
+```
+
+### API
+
+| Method & path | Purpose |
+|---|---|
+| `POST /api/verify` | multipart: declared fields JSON + image uploads → `{session_id, result, images}` |
+| `GET /api/sessions/{id}` | full session state (result, decisions, `can_finalize`) |
+| `GET /api/sessions/{id}/images/{i}` | the uploaded image (served from memory, N-05) |
+| `POST /api/sessions/{id}/decisions` | record `accept` / `reject` on a REVIEW item |
+| `POST /api/sessions/{id}/finalize` | `approve` / `reject` / `request_image` |
+| `GET /api/health` | OCR availability + engine + active session count |
+
+Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swept.
+
+## What works
 
 | Capability | Status |
 |---|---|
@@ -65,8 +104,10 @@ JSON file.
 | `NOT_DECLARED` (no application value) distinct from `UNREADABLE` (couldn't read it) | done |
 | Multi-image applications (front / back) — checks run across all images (F-08) | done |
 | Per-stage latency measured and reported (N-03) | done |
-| Conditional VLM fallback behind an interface, with a working `NullVlm` (design 2.4) | interface + Null path done; Claude adapter wired, exercised in Phase 1 |
-| Web UI, batch endpoint + streaming, CSV manifest + pre-flight, container, deploy | Phase 1 |
+| **FastAPI service** — `POST /api/verify`, session store, decisions, finalize | done |
+| **React review UI** — single-label form, result screen, split-pane review (design 2.5) | done |
+| Conditional VLM fallback behind an interface, with a working `NullVlm` (design 2.4) | interface + Null path done; Claude adapter wired, recorded-cassette test to come |
+| Batch upload + streaming, CSV manifest + pre-flight, degradation set, CI, container, deploy | not yet |
 
 ## Measured on the fixture corpus
 
@@ -172,8 +213,14 @@ ttbverify/
   rules.py        the rules engine (prominence filter lives here)
   pipeline.py     verify() / verify_batch() orchestration with per-stage timing
   cli.py          python -m ttbverify
+service/
+  app.py          FastAPI: /api/verify, sessions, decisions, finalize; serves web/dist
+  sessions.py     in-memory, TTL-swept session store (N-05)
+  schemas.py      request/response models
+web/
+  src/screens/    SingleLabelForm · ResultScreen · ReviewScreen (+ LabelViewer) · DoneScreen
 fixtures/
   generate.py     renders 16 synthetic labels + exact ground truth -> cases.json
-tests/            unit (normalize, parsers, warning, rules) + golden/accuracy (corpus)
+tests/            unit (normalize, parsers, warning, rules) + golden/accuracy + API contract
 report.py         accuracy + latency report; renders review-overlay PNGs
 ```
