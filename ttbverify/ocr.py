@@ -174,6 +174,8 @@ class TesseractOcr:
                 [self.cmd, tmp, "stdout", "-l", self.lang, "--psm", str(self.psm), "tsv"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",  # Tesseract can emit bytes the OS locale can't decode
                 timeout=30,
             )
         finally:

@@ -35,10 +35,11 @@ REFERENCE_TOKENS = REFERENCE_WARNING.split()
 # OCR noise, not a rewording (design 3.3). Tuned to "a character or two off".
 _OCR_NOISE_FLOOR = 0.75
 
-# How far past the "GOVERNMENT WARNING" anchor to gather tokens, as a multiple of
-# the reference length — generous enough to catch trailing words, bounded so a
-# whole back label isn't swallowed.
-_BLOCK_SPAN = len(REFERENCE_TOKENS) + 12
+# How far past the "GOVERNMENT WARNING" anchor to gather tokens — a little slack
+# for OCR splitting a word in two, but not so much that whatever the label prints
+# *after* the warning (a barcode number, a URL, marketing copy) gets pulled in.
+# Trailing tokens with no reference counterpart are dropped in compare_wording.
+_BLOCK_SPAN = len(REFERENCE_TOKENS) + 6
 
 
 def _cmp_token(tok: str) -> str:
@@ -126,9 +127,14 @@ def compare_wording(located_tokens: list[str]) -> WordingReport:
     noise_positions: list[int] = []
     sm = SequenceMatcher(a=ref, b=got, autojunk=False)
 
+    n_ref = len(ref)
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":
             continue
+        # Anything happening only on the `got` side at or past the end of the
+        # reference is text that comes *after* the warning statement (a barcode
+        # number, a URL, a tagline). Not a wording violation — stop here.
+        trailing = i1 >= n_ref
         if tag == "replace":
             for k in range(max(i2 - i1, j2 - j1)):
                 r = ref[i1 + k] if i1 + k < i2 else None
@@ -145,13 +151,13 @@ def compare_wording(located_tokens: list[str]) -> WordingReport:
                 elif r is not None:
                     diff.append({"pos": i1 + k, "expected": r, "got": None,
                                  "kind": "missing"})
-                else:
+                elif not trailing:
                     diff.append({"pos": i1 + k, "expected": None, "got": g,
                                  "kind": "extra"})
         elif tag == "delete":
             for k in range(i1, i2):
                 diff.append({"pos": k, "expected": ref[k], "got": None, "kind": "missing"})
-        elif tag == "insert":
+        elif tag == "insert" and not trailing:
             for k in range(j1, j2):
                 diff.append({"pos": i1, "expected": None, "got": got[k], "kind": "extra"})
 

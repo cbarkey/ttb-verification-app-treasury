@@ -20,6 +20,7 @@ Two design points enforced here:
 from __future__ import annotations
 
 import re
+import statistics
 from dataclasses import dataclass
 
 from ttbverify.models import (
@@ -32,8 +33,19 @@ from ttbverify.normalize import MatchResult, compare
 from ttbverify.ocr import MIN_WORD_CONF, OcrPage, OcrWord
 from ttbverify.parsers import parse_abv, parse_net_contents
 
-# Fraction of the tallest word on a page that still counts as "display type".
-PROMINENCE = 0.55
+# Prominence filter (design 3.2), expressed as a multiple of the page's *median*
+# word height rather than a fraction of the single tallest word — the latter was
+# overfit to the clean corpus and excluded legitimate class/type text on real
+# labels, where the brand is 2-3x the size of everything else.
+#
+#   BRAND_PROMINENCE  — the brand is the biggest thing on the label; a fine-print
+#                       bottler line that happens to contain the declared brand
+#                       string must not clear this bar.
+#   SUBHEAD_PROMINENCE — class/type is a sub-headline: bigger than body/fine
+#                        print, but not display-sized. Just needs to beat the
+#                        fine print.
+BRAND_PROMINENCE = 1.8
+SUBHEAD_PROMINENCE = 0.9
 
 # ABV numeric bands (design 2.3, 3.5): exact by default, near-miss to REVIEW.
 ABV_EXACT_EPS = 0.05
@@ -87,8 +99,40 @@ def _line_window(line: list[OcrWord], want: int) -> list[OcrWord]:
     return line[: want + 2] if len(line) > want + 2 else line
 
 
+def _blocks(lines: list[list[OcrWord]]) -> list[list[OcrWord]]:
+    """Group vertically-adjacent lines so a value wrapped across two lines
+    (a long brand name, an address) can still be matched as one run."""
+    out: list[list[OcrWord]] = []
+    for line in lines:
+        if not line:
+            continue
+        top = min(w.box.top for w in line)
+        h = max(w.box.height for w in line)
+        if out:
+            prev_bottom = max(w.box.bottom for w in out[-1])
+            if 0 <= top - prev_bottom <= 0.9 * h:
+                out[-1].extend(line)
+                continue
+        out.append(list(line))
+    return out
+
+
+def _prominence_threshold(page: OcrPage, factor: float | None) -> float:
+    """Minimum word height to count as prominent on this page.
+
+    `factor` is a multiple of the median word height; `None` means no filter.
+    Capped below the tallest word so the display line itself always qualifies,
+    and disabled on very sparse pages (nothing to filter there).
+    """
+    if factor is None or len(page.words) < 5:
+        return 0.0
+    heights = sorted(w.box.height for w in page.words)
+    median = statistics.median(heights)
+    return min(median * factor, 0.85 * heights[-1])
+
+
 def _locate_text(
-    pages: list[OcrPage], declared: str, *, prominent_only: bool
+    pages: list[OcrPage], declared: str, *, prominence: float | None
 ) -> Location | None:
     """Best matching window of consecutive words for `declared`.
 
@@ -103,17 +147,19 @@ def _locate_text(
     want = max(1, len(declared.split()))
     best: Location | None = None
     prominent: tuple[int, int, Location] | None = None  # (height, -top, loc)
+    filtered = prominence is not None
 
     for page in pages:
         if not page.words:
             continue
-        threshold = PROMINENCE * page.max_word_height if prominent_only else 0
-        for line in _iter_lines(page.words):
-            cand = [w for w in line if w.box.height >= threshold]
+        threshold = _prominence_threshold(page, prominence)
+        prom_lines = [[w for w in ln if w.box.height >= threshold]
+                      for ln in _iter_lines(page.words)]
+        for cand in _blocks([ln for ln in prom_lines if ln]):
             if not cand:
                 continue
 
-            if prominent_only:
+            if filtered:
                 head = _line_window(cand, want)
                 text = " ".join(w.text for w in head)
                 loc = Location(
@@ -182,15 +228,15 @@ def _text_field_check(
     declared: str | None,
     pages: list[OcrPage],
     *,
-    prominent_only: bool,
+    prominence: float | None,
 ) -> CheckResult:
     if declared is None or not declared.strip():
         return CheckResult(check_id, label, Outcome.NOT_DECLARED,
                            detail="No value declared on the application.")
 
-    loc = _locate_text(pages, declared, prominent_only=prominent_only)
+    loc = _locate_text(pages, declared, prominence=prominence)
     if loc is None:
-        where = "in prominent text" if prominent_only else "anywhere on the label"
+        where = "in prominent text" if prominence is not None else "anywhere on the label"
         return CheckResult(check_id, label, Outcome.UNREADABLE, declared=declared,
                            detail=f"Couldn't read text to compare {where}.")
 
@@ -340,17 +386,19 @@ def evaluate(
         ]
 
     checks: list[CheckResult] = [
-        _text_field_check("brand", "Brand name", app.brand_name, pages, prominent_only=True),
-        _text_field_check("class_type", "Class / type", app.class_type, pages, prominent_only=True),
+        _text_field_check("brand", "Brand name", app.brand_name, pages,
+                          prominence=BRAND_PROMINENCE),
+        _text_field_check("class_type", "Class / type", app.class_type, pages,
+                          prominence=SUBHEAD_PROMINENCE),
     ]
     checks.extend(_abv_check(app, pages))
     checks.append(_net_contents_check(app, pages))
     checks.append(
         _text_field_check("producer", "Producer name", app.applicant_name, pages,
-                          prominent_only=False)
+                          prominence=None)
     )
     checks.append(
         _text_field_check("origin", "Country of origin", app.origin, pages,
-                          prominent_only=False)
+                          prominence=None)
     )
     return checks
