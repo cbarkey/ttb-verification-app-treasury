@@ -14,6 +14,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMAGES_DIR = os.path.join(REPO_ROOT, "fixtures", "images")
 CASES_JSON = os.path.join(REPO_ROOT, "fixtures", "cases.json")
 REALISTIC_CASES_JSON = os.path.join(REPO_ROOT, "fixtures", "cases_realistic.json")
+BOLDNESS_CASES_JSON = os.path.join(REPO_ROOT, "fixtures", "cases_boldness.json")
 
 
 def _load(path: str) -> list[dict]:
@@ -35,3 +36,13 @@ def load_realistic_cases() -> list[dict]:
     borders, boxed/rotated warnings, and photo degradation. Cases carry a
     ``grade`` of ``exact`` or ``loose``."""
     return _load(REALISTIC_CASES_JSON)
+
+
+def load_boldness_cases() -> list[dict]:
+    """Matched bold / not-bold warning-header cases (fixtures/boldness.py) for
+    calibrating and gating W-4. Each has a single image."""
+    with open(BOLDNESS_CASES_JSON, encoding="utf-8") as fh:
+        cases = json.load(fh)
+    for case in cases:
+        case["image"]["path"] = os.path.join(REPO_ROOT, case["image"]["path"])
+    return cases

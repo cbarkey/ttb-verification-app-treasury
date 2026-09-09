@@ -246,7 +246,7 @@ class Case:
 
 _ALL_PASS_WARN = {
     "warn_present": "PASS", "warn_text": "PASS",
-    "warn_case": "PASS", "warn_bold": "REVIEW",
+    "warn_case": "PASS", "warn_bold": "PASS",   # bold header -> W-4 auto-confirms
 }
 
 
@@ -491,7 +491,7 @@ def _cases() -> list[Case]:
             "brand": "PASS", "class_type": "PASS", "abv": "PASS", "proof": "PASS",
             "net_contents": "PASS", "producer": "PASS", "origin": "NOT_DECLARED",
             "warn_present": "PASS", "warn_text": "FAIL",
-            "warn_case": "PASS", "warn_bold": "REVIEW",
+            "warn_case": "PASS", "warn_bold": "PASS",
         },
     ))
 
@@ -532,7 +532,7 @@ def _cases() -> list[Case]:
             "brand": "PASS", "class_type": "PASS", "abv": "PASS", "proof": "PASS",
             "net_contents": "PASS", "producer": "PASS", "origin": "NOT_DECLARED",
             "warn_present": "PASS", "warn_text": "REVIEW",
-            "warn_case": "PASS", "warn_bold": "REVIEW",
+            "warn_case": "PASS", "warn_bold": "PASS",
         },
     ))
 
@@ -540,8 +540,8 @@ def _cases() -> list[Case]:
     cases.append(Case(
         case_id="warning_nonbold",
         description="'GOVERNMENT WARNING:' rendered in a regular (non-bold) weight. "
-                    "W-4 must still be REVIEW — boldness is never auto-decided "
-                    "(design 3.4) — and W-2/W-3 must PASS.",
+                    "W-4 must NOT auto-confirm it — falls to REVIEW — while W-2/W-3 "
+                    "still PASS.",
         commodity="spirits", serial="100016", ttb_id="24001001000016",
         brand="OLD TOM DISTILLERY",
         class_type="Kentucky Straight Bourbon Whiskey",
@@ -551,6 +551,26 @@ def _cases() -> list[Case]:
         label_abv_text="45% Alc./Vol. (90 Proof)",
         expect={
             "brand": "PASS", "class_type": "PASS", "abv": "PASS", "proof": "PASS",
+            "net_contents": "PASS", "producer": "PASS", "origin": "NOT_DECLARED",
+            "warn_present": "PASS", "warn_text": "PASS",
+            "warn_case": "PASS", "warn_bold": "REVIEW",
+        },
+    ))
+
+    # 17. two independent REVIEW items (ABV near-miss + non-bold header) ---
+    cases.append(Case(
+        case_id="abv_nearmiss_nonbold",
+        description="ABV near-miss and a non-bold warning header on the same label "
+                    "— two independent REVIEW items for the review-flow tests.",
+        commodity="spirits", serial="100017", ttb_id="24001001000017",
+        brand="OLD TOM DISTILLERY",
+        class_type="Kentucky Straight Bourbon Whiskey",
+        alcohol_content="45% Alc./Vol.", net_contents="750 mL",
+        applicant_name="Old Tom Distillery, LLC", applicant_address="Bardstown, KY",
+        origin=None, warning_mode="nonbold",
+        label_abv_text="45.3% Alc./Vol. (90 Proof)",
+        expect={
+            "brand": "PASS", "class_type": "PASS", "abv": "REVIEW", "proof": "PASS",
             "net_contents": "PASS", "producer": "PASS", "origin": "NOT_DECLARED",
             "warn_present": "PASS", "warn_text": "PASS",
             "warn_case": "PASS", "warn_bold": "REVIEW",

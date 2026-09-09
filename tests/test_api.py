@@ -67,7 +67,7 @@ def test_images_are_served_from_the_session(client, cases):
 
 
 def test_review_decision_flow_unlocks_finalize(client, cases):
-    body = _post_verify(client, cases["abv_near_miss"]).json()
+    body = _post_verify(client, cases["abv_nearmiss_nonbold"]).json()
     sid = body["session_id"]
     review_ids = [c["check_id"] for c in body["result"]["checks"]
                   if c["outcome"] == "REVIEW"]

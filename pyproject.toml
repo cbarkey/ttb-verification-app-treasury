@@ -22,4 +22,5 @@ addopts = "-q"
 markers = [
     "corpus: golden/accuracy layer; needs the tesseract binary and generated fixtures",
     "realistic: accuracy layer over the realistic (styled + degraded) corpus",
+    "boldness: W-4 auto-confirm calibration over the matched bold/not-bold corpus",
 ]

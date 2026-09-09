@@ -36,7 +36,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -76,7 +76,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -112,7 +112,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -152,7 +152,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -192,7 +192,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -232,7 +232,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -272,7 +272,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -312,7 +312,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -352,7 +352,7 @@
       "warn_present": "PASS",
       "warn_text": "FAIL",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -432,7 +432,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -472,7 +472,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -552,7 +552,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -592,7 +592,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -632,7 +632,7 @@
       "warn_present": "PASS",
       "warn_text": "FAIL",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   }
 ]

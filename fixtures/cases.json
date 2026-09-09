@@ -35,7 +35,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -73,7 +73,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -107,7 +107,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -146,7 +146,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -185,7 +185,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -224,7 +224,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -263,7 +263,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -302,7 +302,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -341,7 +341,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -379,7 +379,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -417,7 +417,7 @@
       "warn_present": "PASS",
       "warn_text": "PASS",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -495,7 +495,7 @@
       "warn_present": "PASS",
       "warn_text": "FAIL",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
@@ -573,12 +573,12 @@
       "warn_present": "PASS",
       "warn_text": "REVIEW",
       "warn_case": "PASS",
-      "warn_bold": "REVIEW"
+      "warn_bold": "PASS"
     }
   },
   {
     "case_id": "warning_nonbold",
-    "description": "'GOVERNMENT WARNING:' rendered in a regular (non-bold) weight. W-4 must still be REVIEW \u2014 boldness is never auto-decided (design 3.4) \u2014 and W-2/W-3 must PASS.",
+    "description": "'GOVERNMENT WARNING:' rendered in a regular (non-bold) weight. W-4 must NOT auto-confirm it \u2014 falls to REVIEW \u2014 while W-2/W-3 still PASS.",
     "application": {
       "serial_number": "100016",
       "ttb_id": "24001001000016",
@@ -605,6 +605,45 @@
       "brand": "PASS",
       "class_type": "PASS",
       "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "abv_nearmiss_nonbold",
+    "description": "ABV near-miss and a non-bold warning header on the same label \u2014 two independent REVIEW items for the review-flow tests.",
+    "application": {
+      "serial_number": "100017",
+      "ttb_id": "24001001000017",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images/abv_nearmiss_nonbold_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images/abv_nearmiss_nonbold_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "REVIEW",
       "proof": "PASS",
       "net_contents": "PASS",
       "producer": "PASS",

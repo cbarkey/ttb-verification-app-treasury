@@ -1,0 +1,602 @@
+[
+  {
+    "case_id": "b_georgia_15_clean_bold",
+    "family": "Georgia",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Georgia 15px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_15_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_georgia_15_clean_reg",
+    "family": "Georgia",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Georgia 15px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_15_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_georgia_15_deg_bold",
+    "family": "Georgia",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Georgia 15px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_15_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_georgia_15_deg_reg",
+    "family": "Georgia",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Georgia 15px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_15_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_georgia_22_clean_bold",
+    "family": "Georgia",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Georgia 22px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_22_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_georgia_22_clean_reg",
+    "family": "Georgia",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Georgia 22px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_22_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_georgia_22_deg_bold",
+    "family": "Georgia",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Georgia 22px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_22_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_georgia_22_deg_reg",
+    "family": "Georgia",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Georgia 22px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_georgia_22_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_times_15_clean_bold",
+    "family": "Times",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Times 15px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_15_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_times_15_clean_reg",
+    "family": "Times",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Times 15px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_15_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_times_15_deg_bold",
+    "family": "Times",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Times 15px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_15_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_times_15_deg_reg",
+    "family": "Times",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Times 15px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_15_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_times_22_clean_bold",
+    "family": "Times",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Times 22px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_22_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_times_22_clean_reg",
+    "family": "Times",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Times 22px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_22_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_times_22_deg_bold",
+    "family": "Times",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Times 22px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_22_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_times_22_deg_reg",
+    "family": "Times",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Times 22px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_times_22_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_arial_15_clean_bold",
+    "family": "Arial",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Arial 15px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_15_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_arial_15_clean_reg",
+    "family": "Arial",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Arial 15px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_15_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_arial_15_deg_bold",
+    "family": "Arial",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Arial 15px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_15_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_arial_15_deg_reg",
+    "family": "Arial",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Arial 15px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_15_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_arial_22_clean_bold",
+    "family": "Arial",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Arial 22px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_22_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_arial_22_clean_reg",
+    "family": "Arial",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Arial 22px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_22_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_arial_22_deg_bold",
+    "family": "Arial",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Arial 22px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_22_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_arial_22_deg_reg",
+    "family": "Arial",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Arial 22px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_arial_22_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_calibri_15_clean_bold",
+    "family": "Calibri",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Calibri 15px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_15_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_calibri_15_clean_reg",
+    "family": "Calibri",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Calibri 15px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_15_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_calibri_15_deg_bold",
+    "family": "Calibri",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Calibri 15px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_15_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_calibri_15_deg_reg",
+    "family": "Calibri",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Calibri 15px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_15_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_calibri_22_clean_bold",
+    "family": "Calibri",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Calibri 22px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_22_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_calibri_22_clean_reg",
+    "family": "Calibri",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Calibri 22px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_22_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_calibri_22_deg_bold",
+    "family": "Calibri",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Calibri 22px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_22_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_calibri_22_deg_reg",
+    "family": "Calibri",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Calibri 22px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_calibri_22_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_verdana_15_clean_bold",
+    "family": "Verdana",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Verdana 15px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_15_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_verdana_15_clean_reg",
+    "family": "Verdana",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Verdana 15px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_15_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_verdana_15_deg_bold",
+    "family": "Verdana",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Verdana 15px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_15_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_verdana_15_deg_reg",
+    "family": "Verdana",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Verdana 15px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_15_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_verdana_22_clean_bold",
+    "family": "Verdana",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Verdana 22px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_22_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_verdana_22_clean_reg",
+    "family": "Verdana",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Verdana 22px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_22_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_verdana_22_deg_bold",
+    "family": "Verdana",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Verdana 22px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_22_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_verdana_22_deg_reg",
+    "family": "Verdana",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Verdana 22px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_verdana_22_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_bookman_15_clean_bold",
+    "family": "Bookman",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Bookman 15px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_15_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_bookman_15_clean_reg",
+    "family": "Bookman",
+    "size": 15,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Bookman 15px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_15_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_bookman_15_deg_bold",
+    "family": "Bookman",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Bookman 15px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_15_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_bookman_15_deg_reg",
+    "family": "Bookman",
+    "size": 15,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Bookman 15px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_15_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_bookman_22_clean_bold",
+    "family": "Bookman",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "decidable",
+    "note": "Bookman 22px header bold, body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_22_clean_bold.png"
+    }
+  },
+  {
+    "case_id": "b_bookman_22_clean_reg",
+    "family": "Bookman",
+    "size": 22,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Bookman 22px header regular (NOT bold), body regular",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_22_clean_reg.png"
+    }
+  },
+  {
+    "case_id": "b_bookman_22_deg_bold",
+    "family": "Bookman",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Bookman 22px header bold, body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_22_deg_bold.jpg"
+    }
+  },
+  {
+    "case_id": "b_bookman_22_deg_reg",
+    "family": "Bookman",
+    "size": 22,
+    "degraded": true,
+    "expect_bold": false,
+    "grade": "review_ok",
+    "note": "Bookman 22px header regular (NOT bold), body regular, mild photo",
+    "image": {
+      "path": "fixtures/images_boldness/b_bookman_22_deg_reg.jpg"
+    }
+  },
+  {
+    "case_id": "b_adv_heavy_display",
+    "family": "LatinWide",
+    "size": 18,
+    "degraded": false,
+    "expect_bold": true,
+    "grade": "review_ok",
+    "note": "Header in a heavy display face \u2014 clearly heavier than the body.",
+    "image": {
+      "path": "fixtures/images_boldness/b_adv_heavy_display.png"
+    }
+  },
+  {
+    "case_id": "b_adv_thin_light",
+    "family": "Copperplate",
+    "size": 18,
+    "degraded": false,
+    "expect_bold": false,
+    "grade": "decidable",
+    "note": "Header in a thin light face \u2014 lighter than the body.",
+    "image": {
+      "path": "fixtures/images_boldness/b_adv_thin_light.png"
+    }
+  }
+]

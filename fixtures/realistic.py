@@ -517,7 +517,7 @@ class RCase:
 # --------------------------------------------------------------------------
 
 _PASS_WARN = {"warn_present": "PASS", "warn_text": "PASS",
-              "warn_case": "PASS", "warn_bold": "REVIEW"}
+              "warn_case": "PASS", "warn_bold": "PASS"}  # bold header -> W-4 auto-confirms
 _ALL_PASS = {
     "brand": "PASS", "class_type": "PASS", "abv": "PASS", "proof": "PASS",
     "net_contents": "PASS", "producer": "PASS", "origin": "NOT_DECLARED", **_PASS_WARN,
@@ -642,7 +642,9 @@ def _cases() -> list[RCase]:
         applicant_name="Old Tom Distillery, LLC", applicant_address="Bardstown, KY",
         origin=None, label_abv_line="45% ALC./VOL. (90 PROOF)",
         warning_mode="titlecase",
-        expect={**_ALL_PASS, "warn_case": "FAIL"},
+        # title-case header is mixed-case, so W-4's caps-vs-caps signal is gone
+        # and it can't auto-confirm -> REVIEW (W-3 is the check that FAILs it).
+        expect={**_ALL_PASS, "warn_case": "FAIL", "warn_bold": "REVIEW"},
         note="'Government Warning:' in title case.",
     ))
 

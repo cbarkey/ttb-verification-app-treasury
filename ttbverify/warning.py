@@ -9,14 +9,17 @@ ordinary OCR character noise triggers a false rejection.
                    close-but-not-equal token -> probable OCR noise -> REVIEW
                    genuinely different token -> FAIL + word diff
   W-3 Casing     "GOVERNMENT WARNING" must be uppercase          -> else FAIL
-  W-4 Boldness   never auto-decided -> always REVIEW, with a crop + a density
-                 number shown purely as evidence (design 3.4)
+  W-4 Boldness   auto-PASS only when the header is confidently heavier than the
+                 statement's own regular-weight text; otherwise REVIEW with the
+                 measurement as evidence. Never auto-FAIL. (see assess_boldness)
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from PIL import Image, ImageFilter
 
 from ttbverify.models import BoundingBox, CheckResult, Outcome
 from ttbverify.normalize import similarity
@@ -171,17 +174,116 @@ def compare_wording(located_tokens: list[str]) -> WordingReport:
     return WordingReport(outcome, diff, noise_positions)
 
 
-# --- W-4 boldness evidence -------------------------------------------------
+# --- W-4 boldness -------------------------------------------------------------
+#
+# Design 3.4 warned off thresholding an *absolute* ink-density figure, because
+# capital letters read denser than lowercase regardless of weight. This does
+# something different and confound-free: it asks whether "GOVERNMENT WARNING" is
+# *heavier than the regular-weight remainder of the same statement* — same font
+# family, same size, guaranteed present. The estimator is a stroke thickness
+# (2 * ink area / ink perimeter), normalized by glyph height, computed on a 4x
+# upscale so a 1-2 px stroke isn't lost to quantization.
+#
+# Calibrated on `fixtures/boldness.py` (6 families x regular/bold x 2 sizes x
+# clean/degraded + adversarial): regular headers land at 1.29-1.46x the body,
+# genuine bold at 1.64x and up. Auto-confirm only well clear of that gap, and
+# only ever PASS — never auto-FAIL. Everything short of confident goes to REVIEW,
+# with the measurement shown as evidence.
 
-def _dark_ratio(image, box: BoundingBox) -> float | None:
-    """Fraction of near-black pixels in a box. Evidence only — never a verdict."""
-    if image is None or box is None or box.area == 0:
-        return None
-    crop = image.convert("L").crop((box.left, box.top, box.right, box.bottom))
-    hist = crop.histogram()
-    dark = sum(hist[:96])
+_BOLD_CONFIRM_RATIO = 1.55
+_BOLD_MIN_HEADER_PX = 8       # header box height (original px) below which we can't measure
+_BOLD_UPSCALE = 4
+
+
+def _otsu(gray: Image.Image) -> int:
+    hist = gray.histogram()
     total = sum(hist)
-    return dark / total if total else None
+    if not total:
+        return 127
+    sum_all = sum(i * hist[i] for i in range(256))
+    sum_b = w_b = 0.0
+    best_var, thr = 0.0, 127
+    for i in range(256):
+        w_b += hist[i]
+        if w_b == 0:
+            continue
+        w_f = total - w_b
+        if w_f == 0:
+            break
+        sum_b += i * hist[i]
+        m_b = sum_b / w_b
+        m_f = (sum_all - sum_b) / w_f
+        var = w_b * w_f * (m_b - m_f) ** 2
+        if var > best_var:
+            best_var, thr = var, i
+    return thr
+
+
+def _strip_thickness(image: Image.Image, box: BoundingBox) -> float | None:
+    """Height-normalized stroke thickness of the text inside `box`.
+
+    Handles light-on-dark labels: whichever side of the Otsu split is the
+    minority is taken to be the ink.
+    """
+    pad = 3
+    left, top = max(0, box.left - pad), max(0, box.top - pad)
+    right = min(image.width, box.right + pad)
+    bottom = min(image.height, box.bottom + pad)
+    if right - left < 5 or bottom - top < 5:
+        return None
+    gray = image.convert("L").crop((left, top, right, bottom)).resize(
+        ((right - left) * _BOLD_UPSCALE, (bottom - top) * _BOLD_UPSCALE), Image.LANCZOS)
+    thr = _otsu(gray)
+    hist = gray.histogram()
+    dark = sum(hist[: thr + 1])
+    light = sum(hist[thr + 1:])
+    ink_is_dark = dark <= light          # text is the minority region
+    binary = gray.point(
+        lambda p, t=thr: 255 if ((p <= t) == ink_is_dark) else 0
+    )
+    area = binary.histogram()[255]
+    if area < 200:
+        return None
+    interior = binary.filter(ImageFilter.MinFilter(3)).histogram()[255]
+    boundary = max(1, area - interior)
+    inked = binary.getbbox()
+    if not inked:
+        return None
+    ink_height = inked[3] - inked[1]
+    return (2.0 * area / boundary) / ink_height if ink_height else None
+
+
+def assess_boldness(loc: WarningLocation, image) -> tuple[Outcome, dict]:
+    """PASS only when the header is confidently heavier than the regular text;
+    REVIEW (with the numbers) otherwise. Never auto-FAIL."""
+    if image is None:
+        return Outcome.REVIEW, {"reason": "No image available — confirm boldness from the label."}
+    header = loc.anchor_words
+    if not header or loc.anchor_box.height < _BOLD_MIN_HEADER_PX:
+        return Outcome.REVIEW, {"reason": "Header text too small to measure — confirm from the crop."}
+
+    body = [w for w in loc.words if w not in header
+            and sum(ch.isalpha() for ch in w.text) >= 3]
+    if len(body) < 3:
+        return Outcome.REVIEW, {"reason": "No regular-weight text to compare against — confirm from the crop."}
+    first_top = body[0].box.top
+    body_line = [w for w in body if abs(w.box.top - first_top) < body[0].box.height][:12]
+
+    h_thick = _strip_thickness(image, BoundingBox.enclosing(w.box for w in header))
+    b_thick = _strip_thickness(image, BoundingBox.enclosing(w.box for w in body_line))
+    if not h_thick or not b_thick:
+        return Outcome.REVIEW, {"reason": "Couldn't measure stroke weight cleanly — confirm from the crop."}
+
+    ratio = h_thick / b_thick
+    ev = {"header_stroke": round(h_thick, 4), "body_stroke": round(b_thick, 4),
+          "weight_ratio": round(ratio, 2), "confirm_at": _BOLD_CONFIRM_RATIO}
+    if ratio >= _BOLD_CONFIRM_RATIO:
+        ev["reason"] = (f"'GOVERNMENT WARNING' measures {ratio:.2f}x the stroke weight of "
+                        "the statement's regular text — confidently bold.")
+        return Outcome.PASS, ev
+    ev["reason"] = (f"'GOVERNMENT WARNING' is {ratio:.2f}x the regular text; auto-confirm "
+                    f"needs {_BOLD_CONFIRM_RATIO}x. Confirm boldness from the crop.")
+    return Outcome.REVIEW, ev
 
 
 # --- top-level evaluation -------------------------------------------------
@@ -259,16 +361,12 @@ def evaluate(pages: list[OcrPage], images: dict | None = None,
         **common,
     )
 
-    # W-4 boldness — always REVIEW (design 3.4)
-    ratio = _dark_ratio(images.get(loc.page_index), loc.anchor_box)
-    body_ratio = _dark_ratio(images.get(loc.page_index), loc.block_box)
-    evidence = {"header_dark_ratio": round(ratio, 3) if ratio is not None else None,
-                "block_dark_ratio": round(body_ratio, 3) if body_ratio is not None else None}
+    # W-4 boldness — auto-confirm the confidently-bold case, REVIEW the rest.
+    w4_outcome, w4_ev = assess_boldness(loc, images.get(loc.page_index))
     w4 = CheckResult(
-        "warn_bold", _CHECK_LABELS["warn_bold"], Outcome.REVIEW,
-        box=loc.anchor_box,
-        detail="Boldness can't be judged reliably by machine — confirm from the crop.",
-        evidence=evidence, **common,
+        "warn_bold", _CHECK_LABELS["warn_bold"], w4_outcome,
+        box=loc.anchor_box, detail=w4_ev.pop("reason"),
+        evidence=w4_ev, **common,
     )
 
     return [w1, w2, w3, w4]

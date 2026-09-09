@@ -75,7 +75,8 @@ class TestLocateAndEvaluate:
         assert by_id["warn_present"].outcome is Outcome.PASS
         assert by_id["warn_text"].outcome is Outcome.PASS
         assert by_id["warn_case"].outcome is Outcome.PASS
-        # W-4 is never auto-decided (design 3.4).
+        # W-4 needs the rendered image to measure stroke weight; with only
+        # synthetic pages it falls back to REVIEW, never a blind PASS/FAIL.
         assert by_id["warn_bold"].outcome is Outcome.REVIEW
 
     def test_titlecase_header_fails_w3_only(self):
@@ -88,7 +89,7 @@ class TestLocateAndEvaluate:
         checks = evaluate([], ocr_available=False)
         assert all(c.outcome is Outcome.UNREADABLE for c in checks)
 
-    def test_w4_always_review_even_when_present_and_bold(self):
+    def test_w4_never_blind_passes_or_fails_without_an_image(self):
         by_id = {c.check_id: c for c in evaluate([make_page(REFERENCE_WARNING, role="back")])}
         assert by_id["warn_bold"].outcome is Outcome.REVIEW
-        assert "header_dark_ratio" in by_id["warn_bold"].evidence
+        assert by_id["warn_bold"].detail  # explains why it couldn't decide

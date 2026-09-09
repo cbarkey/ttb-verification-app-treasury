@@ -26,7 +26,10 @@ except Exception:
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
-from fixtures import REPO_ROOT, load_cases, load_realistic_cases  # noqa: E402
+from fixtures import (  # noqa: E402
+    REPO_ROOT, load_boldness_cases, load_cases, load_realistic_cases,
+)
+from ttbverify import warning  # noqa: E402
 from ttbverify.models import LabelApplication, Outcome  # noqa: E402
 from ttbverify.ocr import NullOcr, TesseractOcr  # noqa: E402
 from ttbverify.pipeline import verify  # noqa: E402
@@ -139,7 +142,8 @@ def main() -> int:
     print(f"\n  overlays -> {os.path.relpath(OUT, REPO_ROOT)}/")
 
     realistic_ok = _realistic_report(engine)
-    return 0 if ok and p95 < 5000 and realistic_ok else 1
+    boldness_ok = _boldness_report(engine)
+    return 0 if ok and p95 < 5000 and realistic_ok and boldness_ok else 1
 
 
 def _realistic_report(engine) -> bool:
@@ -188,6 +192,53 @@ def _realistic_report(engine) -> bool:
     print("  loose-grade cases carry rotation / perspective / low light; a clean field")
     print("  softening to REVIEW/UNREADABLE there is expected (deskew is Phase 1 work).")
     return not false_appr and not exact_mis and p95 < 5000
+
+
+def _boldness_report(engine) -> bool:
+    """W-4 auto-confirm: matched bold / not-bold headers across 6 families."""
+    try:
+        cases = load_boldness_cases()
+    except FileNotFoundError:
+        print("\n  (boldness corpus not generated — run `python -m fixtures.boldness`)")
+        return True
+    from PIL import Image
+
+    bar = "=" * 92
+    print()
+    print(bar)
+    print("W-4 BOLDNESS  (header stroke weight vs the statement's own regular text)")
+    print(bar)
+
+    false_pass, auto_fail = [], []
+    dec_total = dec_decided = dec_wrong = 0
+    for case in cases:
+        page = engine.read(case["image"]["path"], 0, "back")
+        loc = warning.locate([page])
+        outcome, ev = (warning.assess_boldness(loc, Image.open(case["image"]["path"]))
+                       if loc else (None, {}))
+        val = outcome.value if outcome else "NO-LOC"
+        if case["expect_bold"] is False and val == "PASS":
+            false_pass.append(case["case_id"])
+        if val == "FAIL":
+            auto_fail.append(case["case_id"])
+        if case["grade"] == "decidable":
+            dec_total += 1
+            if val in ("PASS", "FAIL"):
+                dec_decided += 1
+            want = "PASS" if case["expect_bold"] else "REVIEW"
+            if val != want:
+                dec_wrong += 1
+
+    print(f"  regular headers auto-PASSed   {len(false_pass)}  "
+          f"{'PASS' if not false_pass else 'FAIL ' + str(false_pass)}")
+    print(f"  headers auto-FAILed           {len(auto_fail)}  "
+          f"{'PASS' if not auto_fail else 'FAIL ' + str(auto_fail)}  (W-4 never rejects)")
+    print(f"  decidable set correct         {dec_total - dec_wrong}/{dec_total}")
+    print(f"  decidable auto-decide rate    {dec_decided}/{dec_total} "
+          f"({100 * dec_decided // dec_total}%)   (reported, not gated)")
+    print(f"  confirm threshold             {warning._BOLD_CONFIRM_RATIO}x "
+          "the regular text's stroke weight")
+    return not false_pass and not auto_fail and dec_wrong == 0
 
 
 if __name__ == "__main__":
