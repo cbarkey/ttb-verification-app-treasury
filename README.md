@@ -40,7 +40,8 @@ every check is `UNREADABLE` and nothing is auto-approved (requirement N-06).
 ```bash
 python -m fixtures.generate           # render the clean 16-label corpus + ground truth
 python -m fixtures.realistic          # (re)render the realistic corpus — needs system fonts
-pytest                                # 125 tests: unit + golden + realistic + API contract
+python -m fixtures.boldness           # (re)render the W-4 boldness calibration corpus
+pytest                                # 155 tests: unit + golden + realistic + boldness + API
 python report.py                      # accuracy + latency for both corpora; review overlays
 ```
 
@@ -100,7 +101,7 @@ Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swep
 | ABV parsing across label phrasings; proof-vs-ABV (`proof == 2 × ABV`) consistency | done |
 | Net contents with unit normalization (mL / cL / L / fl oz / pt) | done |
 | Health warning W-1 presence, W-2 wording (two-band), W-3 capitalization | done |
-| W-4 boldness as a human-review item with a density measurement as evidence only | done |
+| W-4 boldness — confidence-gated auto-confirm (stroke weight vs the statement's own regular text) | done |
 | Word-level diff of a non-compliant warning statement | done |
 | `NOT_DECLARED` (no application value) distinct from `UNREADABLE` (couldn't read it) | done |
 | Multi-image applications (front / back) — checks run across all images (F-08) | done |
@@ -120,8 +121,8 @@ Real Tesseract 5.4, `NullVlm`, 16 labels (front+back where applicable), on a Win
 false approvals              0          (gated — must be 0)
 expectation mismatches       0          (every check matches checked-in ground truth)
 warning-statement recall     1.0        (every warning defect fixture is caught)
-latency  p50 / p95           ~406 ms / ~417 ms   (budget 5000 ms, N-01)
-review rate                  9.9%       (reported, not gated)
+latency  p50 / p95           ~410 ms / ~420 ms   (budget 5000 ms, N-01)
+review rate                  2.3%       (reported, not gated; was 9.9% before W-4 auto-confirm)
 ```
 
 `report.py` also burns the review-overlay boxes into `out/overlay_*.png` — the same
@@ -154,6 +155,19 @@ follows the warning, an OCR TSV decode crash on non-Latin bytes) — all now fix
 remaining `loose`-case gaps are all rotation / perspective / low light, i.e. the
 degradation-set preprocessing (deskew) that's still to come.
 
+### W-4 boldness calibration corpus
+
+`fixtures/boldness.py` renders 50 matched warning headers — 6 font families × regular/bold ×
+two sizes × clean/degraded, plus a heavy-display and a thin-light adversarial — to calibrate
+and gate the W-4 auto-confirm (see the design note above).
+
+```
+regular headers ever auto-PASSed          0     (the hard gate)
+W-4 auto-FAILs                             0     (it only PASSes or REVIEWs)
+decidable cases correct                    25/25
+decidable auto-decide rate                 48%   (reported, not gated)
+```
+
 ## Design decisions worth calling out
 
 **OCR is Tesseract via TSV output, not plain text.** The pipeline needs, per word: original
@@ -168,12 +182,18 @@ on clean, compliant labels. A token that is *close* to its reference word (simil
 a genuinely different word is a `FAIL` with a word-level diff. Both paths are unit-tested
 with deliberately noisy input.
 
-**W-4 (bold header) is never auto-decided.** Ink-density measurement confounds boldness with
-capitalization — an all-caps non-bold header reads denser than mixed-case body text
-regardless of weight, so a density threshold looks fine in a demo and fails silently on the
-case the fixture set didn't cover. W-4 always returns `REVIEW`, with the density ratio shown
-as *evidence for a human*, never as a verdict. This is the clearest instance of "the machine
-surfaces evidence, the human makes the call."
+**W-4 (bold header) is confidence-gated, not always-review.** An *absolute* ink-density
+threshold is confounded — all-caps text reads denser than mixed-case regardless of weight —
+so W-4 instead compares `GOVERNMENT WARNING` against the **regular-weight remainder of the
+same statement** (same family, same size, guaranteed present). The estimator is a stroke
+thickness (2·area/perimeter, height-normalized, on a 4× upscale so a 1–2 px stroke isn't
+lost to quantization). Calibrated on `fixtures/boldness.py` — 6 families × regular/bold × 2
+sizes × clean/degraded, plus adversarial cases — regular headers land at 1.29–1.46× the
+body, genuine bold at 1.64×+. W-4 **auto-PASSes only above 1.55×** (well clear of the gap);
+anything short is `REVIEW` with the ratio shown; it **never auto-FAILs**. On the matched
+corpus: 0 regular headers ever auto-PASS, and ~48% of the clean same-family set
+auto-decides. Effect on the clean corpus: review rate 9.9% → 2.3%, and a fully compliant
+label verifies straight to `PASS`.
 
 **Brand/class-type matching is prominence-filtered.** A label can legitimately contain the
 producer's name in fine print that fuzzy-matches the *declared brand* even when the actual,
@@ -217,7 +237,7 @@ the better tool may be the conditional VLM pass, which is already in the archite
 
 ## Known limitations
 
-- W-4 boldness cannot be decided automatically — surfaced as evidence for a human, by design.
+- W-4 boldness auto-confirms only the confidently-bold case; everything else is human review. It never auto-FAILs. ~48% of clean same-family headers auto-decide on the calibration corpus.
 - Degradation handling is limited to what Tesseract tolerates natively; no deskew, contrast
   repair beyond autocontrast, or glare mitigation yet (Phase 1).
 - ABV is compared exactly, near-misses (≤ 0.5 %) routed to `REVIEW`. Per-commodity
@@ -252,6 +272,7 @@ web/
 fixtures/
   generate.py     renders the clean 16-label corpus + ground truth -> cases.json
   realistic.py    renders the realistic corpus (colour/serif/borders/photos) -> cases_realistic.json
+  boldness.py     matched bold/not-bold warning headers for W-4 calibration -> cases_boldness.json
 tests/            unit (normalize, parsers, warning, rules) + golden + realistic + API contract
 report.py         accuracy + latency for both corpora; renders review-overlay PNGs
 ```

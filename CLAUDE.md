@@ -886,13 +886,33 @@ draws page 0 only — the web UI handles per-page overlays itself.
 - Result: 9/9 exact match, 0 false approvals across all 16, p95 ~630 ms. The remaining
   `loose` gaps are all rotation/perspective/low-light → the degradation-set + deskew work.
 
-- Total tests: 125.
+**Done: W-4 boldness — confidence-gated auto-confirm** (commit `3e1a3cb`). Replaces
+"always REVIEW". `warning.assess_boldness()` measures a height-normalized stroke thickness
+(`2*area/perimeter` on a 4x upscale, light-on-dark aware) for the "GOVERNMENT WARNING"
+header and for the statement's own regular-weight first line, and takes the ratio. Auto-PASS
+at `_BOLD_CONFIRM_RATIO = 1.55` (regular headers measure 1.29-1.46x, bold 1.64x+ on the
+calibration set); otherwise REVIEW; **never auto-FAIL**. `fixtures/boldness.py` → 50 matched
+cases (6 families x reg/bold x 2 sizes x clean/degraded + 2 adversarial), committed images.
+`tests/test_boldness.py` — hard gate is "a regular header never auto-PASSes" (holds on all
+50); 25/25 decidable correct; 48% of decidable auto-decides. Ripple: clean + realistic
+`warn_bold` expectations flipped to PASS where the header is bold; `warning_titlecase` /
+`warning_nonbold` stay REVIEW; new `abv_nearmiss_nonbold` fixture for the review-flow tests.
+**Clean-corpus review rate 9.9% → 2.3%** — a compliant label now verifies straight to PASS.
+
+- Total tests: 155.
+
+**VLM decision (with the user):** keep the `VlmClient` interface + `NullVlm` default as a
+documented, dormant extension point — do NOT wire `ClaudeVlm` into the running pipeline and
+**cut the VLM cassette test** from the plan. Rationale: OCR-`UNREADABLE` → "request a better
+image" is already the correct answer; Marcus's firewall breaks cloud VLMs; the latency
+budget; auditability. Higher-value future VLM use would be W-4 / residual degradation, not
+general field reading.
 
 **Still to do**, priority order: batch upload + SSE streaming → CSV manifest + pre-flight
-(§3.4) → VLM recorded-cassette test → **degradation-set preprocessing (deskew / perspective
-correction) — the realistic `loose` cases are the fixtures for it** → CI → container +
-deploy. Deploy target (with the user): frontend on **Vercel**, backend container on
-**Render/Fly** (Azure Container Apps only if the TTB-infra story is wanted).
+(§3.4) → **degradation-set preprocessing (deskew / perspective correction) — the realistic
+`loose` cases are the fixtures for it** → CI → container + deploy. Deploy target (with the
+user): frontend on **Vercel**, backend container on **Render/Fly** (Azure Container Apps
+only if the TTB-infra story is wanted).
 
 Web-UI polish deferred: the zoom crop for the full warning block is necessarily small;
 right pane has whitespace below the image on wide screens; no keyboard nav between review
