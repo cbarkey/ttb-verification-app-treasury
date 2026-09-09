@@ -26,7 +26,7 @@ except Exception:
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
-from fixtures import REPO_ROOT, load_cases  # noqa: E402
+from fixtures import REPO_ROOT, load_cases, load_realistic_cases  # noqa: E402
 from ttbverify.models import LabelApplication, Outcome  # noqa: E402
 from ttbverify.ocr import NullOcr, TesseractOcr  # noqa: E402
 from ttbverify.pipeline import verify  # noqa: E402
@@ -138,7 +138,56 @@ def main() -> int:
         _overlay(app, verify(app, engine), os.path.join(OUT, f"overlay_{cid}.png"))
     print(f"\n  overlays -> {os.path.relpath(OUT, REPO_ROOT)}/")
 
-    return 0 if ok and p95 < 5000 else 1
+    realistic_ok = _realistic_report(engine)
+    return 0 if ok and p95 < 5000 and realistic_ok else 1
+
+
+def _realistic_report(engine) -> bool:
+    """The realistic corpus: styled + degraded labels, graded exact/loose."""
+    try:
+        cases = load_realistic_cases()
+    except FileNotFoundError:
+        print("\n  (realistic corpus not generated — run `python -m fixtures.realistic`)")
+        return True
+
+    bar = "=" * 92
+    print()
+    print(bar)
+    print("REALISTIC CORPUS  (colour / serif / borders / boxed & rotated warnings / photos)")
+    print(bar)
+    print(f"{'case':24s} {'grade':6s} {'ms':>5s}  {'verdict':10s} flagged")
+    print("-" * 92)
+
+    false_appr, exact_mis, timings = [], [], []
+    for case in cases:
+        app = LabelApplication(**case["application"])
+        result = verify(app, engine)
+        timings.append(result.elapsed_ms)
+        by_id = {c.check_id: c.outcome.value for c in result.checks}
+        for cid, exp in case["expect"].items():
+            got = by_id.get(cid, "MISSING")
+            if exp in ("FAIL", "REVIEW") and got == "PASS":
+                false_appr.append(f"{case['case_id']}/{cid}")
+            if case["grade"] == "exact" and exp != "MISSING" and got != exp:
+                exact_mis.append(f"{case['case_id']}/{cid}: {exp}->{got}")
+        flagged = ", ".join(f"{c.check_id}:{c.outcome.value}"
+                            for c in result.checks if c.needs_agent) or "-"
+        print(f"{case['case_id']:24s} {case['grade']:6s} {result.elapsed_ms:5d}  "
+              f"{result.verdict.value:10s} {flagged}")
+
+    timings.sort()
+    p95 = timings[min(len(timings) - 1, max(0, int(round(0.95 * len(timings))) - 1))]
+    print()
+    print(f"  false approvals            {len(false_appr)}  "
+          f"{'PASS' if not false_appr else 'FAIL ' + str(false_appr)}")
+    print(f"  exact-grade mismatches     {len(exact_mis)}  "
+          f"{'PASS' if not exact_mis else 'FAIL'}")
+    for m in exact_mis:
+        print(f"      - {m}")
+    print(f"  latency p95                {p95} ms  ({'PASS' if p95 < 5000 else 'FAIL'})")
+    print("  loose-grade cases carry rotation / perspective / low light; a clean field")
+    print("  softening to REVIEW/UNREADABLE there is expected (deskew is Phase 1 work).")
+    return not false_appr and not exact_mis and p95 < 5000
 
 
 if __name__ == "__main__":

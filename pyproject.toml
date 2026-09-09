@@ -21,4 +21,5 @@ testpaths = ["tests"]
 addopts = "-q"
 markers = [
     "corpus: golden/accuracy layer; needs the tesseract binary and generated fixtures",
+    "realistic: accuracy layer over the realistic (styled + degraded) corpus",
 ]

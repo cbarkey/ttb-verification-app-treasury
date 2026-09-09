@@ -1,0 +1,638 @@
+[
+  {
+    "case_id": "r01_whiskey_clean",
+    "grade": "exact",
+    "note": "Copperplate display, cream gradient, framed, medallion.",
+    "application": {
+      "serial_number": "200001",
+      "ttb_id": "24RIC01000001",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r01_whiskey_clean_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r01_whiskey_clean_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r02_wine_boxed",
+    "grade": "exact",
+    "note": "Baskerville, burgundy accents, warning ruled into a box.",
+    "application": {
+      "serial_number": "200002",
+      "ttb_id": "24RIC01000002",
+      "brand_name": "MAISON DUBOIS",
+      "class_type": "Bordeaux Superieur",
+      "commodity": "wine",
+      "alcohol_content": "13.5% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Dubois Imports",
+      "applicant_address": "New York, NY",
+      "origin": "France",
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r02_wine_boxed_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r02_wine_boxed_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "MISSING",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "PASS",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r03_gin_single",
+    "grade": "exact",
+    "note": "Gill Sans, pale ground, one image.",
+    "application": {
+      "serial_number": "200003",
+      "ttb_id": "24RIC01000003",
+      "brand_name": "NORTH PIER",
+      "class_type": "London Dry Gin",
+      "commodity": "spirits",
+      "alcohol_content": "47% Alc./Vol.",
+      "net_contents": "700 mL",
+      "applicant_name": "North Pier Distilling Co.",
+      "applicant_address": "Astoria, OR",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r03_gin_single_front.png",
+          "role": "front"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r04_rum_dark",
+    "grade": "loose",
+    "note": "Light-on-dark: OCR contrast is inverted; autocontrast should cope.",
+    "application": {
+      "serial_number": "200004",
+      "ttb_id": "24RIC01000004",
+      "brand_name": "RUSTY ANCHOR",
+      "class_type": "Aged Caribbean Rum",
+      "commodity": "spirits",
+      "alcohol_content": "40% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Rusty Anchor Spirits",
+      "applicant_address": "Key West, FL",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r04_rum_dark_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r04_rum_dark_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r05_brand_decoy",
+    "grade": "exact",
+    "note": "Prominent brand is IRONWOOD RESERVE; declared brand only in the licensing line (the 3.2 pitfall, realistically styled).",
+    "application": {
+      "serial_number": "200005",
+      "ttb_id": "24RIC01000005",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Ironwood Spirits Group",
+      "applicant_address": "Louisville, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r05_brand_decoy_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r05_brand_decoy_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "FAIL",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r06_abv_mismatch",
+    "grade": "exact",
+    "note": "Label under-states declared ABV by two points.",
+    "application": {
+      "serial_number": "200006",
+      "ttb_id": "24RIC01000006",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r06_abv_mismatch_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r06_abv_mismatch_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "FAIL",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r07_proof_bad",
+    "grade": "exact",
+    "note": "90 proof would match 45%; label says 100.",
+    "application": {
+      "serial_number": "200007",
+      "ttb_id": "24RIC01000007",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r07_proof_bad_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r07_proof_bad_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "FAIL",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r08_net_mismatch",
+    "grade": "exact",
+    "note": "Half bottle printed against a 750 mL application.",
+    "application": {
+      "serial_number": "200008",
+      "ttb_id": "24RIC01000008",
+      "brand_name": "STONEBRIDGE CELLARS",
+      "class_type": "California Chardonnay",
+      "commodity": "wine",
+      "alcohol_content": "13% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Stonebridge Cellars",
+      "applicant_address": "Napa, CA",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r08_net_mismatch_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r08_net_mismatch_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "MISSING",
+      "net_contents": "FAIL",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r09_warn_reworded",
+    "grade": "exact",
+    "note": "'operate machinery' replaced with 'operate a boat'.",
+    "application": {
+      "serial_number": "200009",
+      "ttb_id": "24RIC01000009",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r09_warn_reworded_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r09_warn_reworded_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "FAIL",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r10_warn_titlecase",
+    "grade": "exact",
+    "note": "'Government Warning:' in title case.",
+    "application": {
+      "serial_number": "200010",
+      "ttb_id": "24RIC01000010",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r10_warn_titlecase_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r10_warn_titlecase_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "FAIL",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r11_whiskey_photo",
+    "grade": "loose",
+    "note": "r01 shot as a photo. Should still read; a clean field slipping to REVIEW is tolerated, PASS on a defect is not.",
+    "application": {
+      "serial_number": "200011",
+      "ttb_id": "24RIC01000011",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r11_whiskey_photo_front.jpg",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r11_whiskey_photo_back.jpg",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r12_lowlight",
+    "grade": "loose",
+    "note": "Dark theme + low light. Fields may go UNREADABLE/REVIEW; nothing unverified may read PASS.",
+    "application": {
+      "serial_number": "200012",
+      "ttb_id": "24RIC01000012",
+      "brand_name": "RUSTY ANCHOR",
+      "class_type": "Aged Caribbean Rum",
+      "commodity": "spirits",
+      "alcohol_content": "40% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Rusty Anchor Spirits",
+      "applicant_address": "Key West, FL",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r12_lowlight_front.jpg",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r12_lowlight_back.jpg",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r13_warn_sidebar",
+    "grade": "loose",
+    "note": "Warning set vertically on a side panel. No deskew yet, so the pipeline should fail to locate it -> UNREADABLE, never a silent pass. Documents the Phase 1 preprocessing gap.",
+    "application": {
+      "serial_number": "200013",
+      "ttb_id": "24RIC01000013",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r13_warn_sidebar_front.png",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r13_warn_sidebar_back.png",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "UNREADABLE",
+      "warn_text": "UNREADABLE",
+      "warn_case": "UNREADABLE",
+      "warn_bold": "UNREADABLE"
+    }
+  },
+  {
+    "case_id": "r14_wine_angle",
+    "grade": "loose",
+    "note": "Shot at an angle. Keystoned text; tests location robustness.",
+    "application": {
+      "serial_number": "200014",
+      "ttb_id": "24RIC01000014",
+      "brand_name": "MAISON DUBOIS",
+      "class_type": "Bordeaux Superieur",
+      "commodity": "wine",
+      "alcohol_content": "13.5% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Dubois Imports",
+      "applicant_address": "New York, NY",
+      "origin": "France",
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r14_wine_angle_front.jpg",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r14_wine_angle_back.jpg",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "MISSING",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "PASS",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r15_abv_mismatch_photo",
+    "grade": "loose",
+    "note": "Declared 45%, label 41%, shot as a photo. The mismatch must survive the degradation \u2014 FAIL (or at worst REVIEW/UNREADABLE), never PASS.",
+    "application": {
+      "serial_number": "200015",
+      "ttb_id": "24RIC01000015",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r15_abv_mismatch_photo_front.jpg",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r15_abv_mismatch_photo_back.jpg",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "FAIL",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "PASS",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  },
+  {
+    "case_id": "r16_warn_reworded_photo",
+    "grade": "loose",
+    "note": "'operate a boat' rewording on a mild photo. warn_text must not PASS.",
+    "application": {
+      "serial_number": "200016",
+      "ttb_id": "24RIC01000016",
+      "brand_name": "OLD TOM DISTILLERY",
+      "class_type": "Kentucky Straight Bourbon Whiskey",
+      "commodity": "spirits",
+      "alcohol_content": "45% Alc./Vol.",
+      "net_contents": "750 mL",
+      "applicant_name": "Old Tom Distillery, LLC",
+      "applicant_address": "Bardstown, KY",
+      "origin": null,
+      "images": [
+        {
+          "path": "fixtures/images_realistic/r16_warn_reworded_photo_front.jpg",
+          "role": "front"
+        },
+        {
+          "path": "fixtures/images_realistic/r16_warn_reworded_photo_back.jpg",
+          "role": "back"
+        }
+      ]
+    },
+    "expect": {
+      "brand": "PASS",
+      "class_type": "PASS",
+      "abv": "PASS",
+      "proof": "PASS",
+      "net_contents": "PASS",
+      "producer": "PASS",
+      "origin": "NOT_DECLARED",
+      "warn_present": "PASS",
+      "warn_text": "FAIL",
+      "warn_case": "PASS",
+      "warn_bold": "REVIEW"
+    }
+  }
+]
