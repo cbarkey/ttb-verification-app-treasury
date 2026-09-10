@@ -899,7 +899,27 @@ cases (6 families x reg/bold x 2 sizes x clean/degraded + 2 adversarial), commit
 `warning_nonbold` stay REVIEW; new `abv_nearmiss_nonbold` fixture for the review-flow tests.
 **Clean-corpus review rate 9.9% → 2.3%** — a compliant label now verifies straight to PASS.
 
-- Total tests: 155.
+**Done: batch — full scope** (commits around `feat: batch backend` / `feat: batch UI`).
+
+- `service/manifest.py` parses `manifest.csv` (explicit `image_files` column — `commodity`
+  is a *required* column here, unlike the design's sample) and `reconcile()`s it against the
+  ZIP: missing/orphan images, dup serials, unparseable declared values (§3.4). Blank
+  template has a BOM for Excel.
+- `service/batch.py` — in-memory `BatchStore`/`Batch`/`BatchRow` (N-05); `queue_order()`
+  sorts ERROR/FAIL/UNREADABLE/REVIEW to the top (§5.4).
+- `service/routes_batch.py` — `POST /api/verify/batch` (ZIP → pre-flight), `/start`
+  (processing runs in a **plain daemon thread** + a `ThreadPoolExecutor(4)`; NOT an asyncio
+  task — a bare `create_task` background job does not progress between `TestClient` requests,
+  and detached tasks can be GC'd), SSE `/events` (async gen polls the mutating batch state),
+  `/rows/{serial}[/decisions|/finalize|/images/{i}]`, `/export.csv`.
+- Frontend: `Home` (single vs batch), `BatchUpload`, `BatchPreflight`, `BatchQueue` (SSE +
+  1.5 s polling fallback, FAIL/REVIEW on top, CSV export link). `ReviewScreen` was refactored
+  to `(data, onDecide, onFinalize, nav?)` so the *same* split-pane serves a single-label
+  session and a batch row; batch review gets a "1 of N" prev/next header and advances to the
+  next exception on finalize.
+- `rules._blocks` now only merges adjacent lines of *similar height* — a wrapped brand's box
+  no longer swallows the smaller class/type line.
+- Tests: `test_manifest.py` (8), `test_batch_api.py` (8, builds ZIPs in memory). **Total: 171.**
 
 **VLM decision (with the user):** keep the `VlmClient` interface + `NullVlm` default as a
 documented, dormant extension point — do NOT wire `ClaudeVlm` into the running pipeline and
@@ -908,11 +928,10 @@ image" is already the correct answer; Marcus's firewall breaks cloud VLMs; the l
 budget; auditability. Higher-value future VLM use would be W-4 / residual degradation, not
 general field reading.
 
-**Still to do**, priority order: batch upload + SSE streaming → CSV manifest + pre-flight
-(§3.4) → **degradation-set preprocessing (deskew / perspective correction) — the realistic
-`loose` cases are the fixtures for it** → CI → container + deploy. Deploy target (with the
-user): frontend on **Vercel**, backend container on **Render/Fly** (Azure Container Apps
-only if the TTB-infra story is wanted).
+**Still to do**, priority order: **degradation-set preprocessing (deskew / perspective
+correction) — the realistic `loose` cases are the fixtures for it** → CI → container +
+deploy. Deploy (with the user): "figure it out with the browser counterpart" — frontend
+likely on **Vercel**, backend container on **Render/Fly**.
 
 Web-UI polish deferred: the zoom crop for the full warning block is necessarily small;
 right pane has whitespace below the image on wide screens; no keyboard nav between review

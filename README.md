@@ -8,10 +8,10 @@ implementation pitfalls each rule is built and tested against).
 
 - **Phase 0 — done.** Verification core: fixture corpus, the rules engine, real Tesseract
   OCR, the health-warning checks W-1..W-4, accuracy gates. CLI: `python -m ttbverify`.
-- **Phase 1 — in progress.** FastAPI service + a React review UI for the single-label
-  path: upload → result → the split-pane review screen (design 2.5), the priority of this
-  phase. Still to come: batch upload + streaming, CSV manifest + pre-flight, the
-  degradation set, CI, and deployment.
+- **Phase 1 — in progress.** FastAPI service + a React UI: single-label (upload → result
+  → split-pane review, design 2.5) **and batch** (ZIP + `manifest.csv` → pre-flight
+  reconciliation → streamed queue → work the exception rows). Still to come: degradation
+  preprocessing, CI, and deployment.
 
 ## Setup
 
@@ -41,7 +41,7 @@ every check is `UNREADABLE` and nothing is auto-approved (requirement N-06).
 python -m fixtures.generate           # render the clean 16-label corpus + ground truth
 python -m fixtures.realistic          # (re)render the realistic corpus — needs system fonts
 python -m fixtures.boldness           # (re)render the W-4 boldness calibration corpus
-pytest                                # 155 tests: unit + golden + realistic + boldness + API
+pytest                                # 171 tests: unit + golden + realistic + boldness + API + batch
 python report.py                      # accuracy + latency for both corpora; review overlays
 ```
 
@@ -67,11 +67,19 @@ cd web && npm install && npm run build && cd ..
 python -m service                    # http://127.0.0.1:8000  (HOST / PORT env vars)
 ```
 
-Open <http://127.0.0.1:8000>: enter the declared fields, drop the label image(s), press
-**Verify label**. A clean result offers **Approve**; anything else opens the split-pane
-**review screen** — checks on the left (needs-attention first), the label on the right with
-the active field's region boxed and a zoomed crop beneath it, and per-item decisions in the
-agent's own words. The footer's **Approve** unlocks once every review item is resolved.
+Open <http://127.0.0.1:8000> and pick **Check one label** or **Upload a batch**.
+
+*Single label* — enter the declared fields, drop the image(s), press **Verify label**. A
+clean result offers **Approve**; anything else opens the split-pane **review screen** —
+checks on the left (needs-attention first), the label on the right with the active field's
+region boxed and a zoomed crop beneath it, per-item decisions in the agent's own words. The
+footer's **Approve** unlocks once every review item is resolved.
+
+*Batch* — download the blank manifest, fill it in, zip it with the images, drop the ZIP. A
+**pre-flight** screen reconciles the manifest against the archive (missing/orphan images,
+duplicate serials, values that won't parse) before anything is verified. Confirm, and
+results **stream into a queue** with `FAIL`/`REVIEW` sorted to the top; **Review** walks the
+exception rows through the same split-pane with next/prev nav. Decisions export to CSV.
 
 For frontend development with hot reload, run the API on `:8000` and Vite separately:
 
@@ -83,11 +91,15 @@ cd web && npm run dev                # http://127.0.0.1:5173, proxies /api to :8
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/verify` | multipart: declared fields JSON + image uploads → `{session_id, result, images}` |
-| `GET /api/sessions/{id}` | full session state (result, decisions, `can_finalize`) |
-| `GET /api/sessions/{id}/images/{i}` | the uploaded image (served from memory, N-05) |
-| `POST /api/sessions/{id}/decisions` | record `accept` / `reject` on a REVIEW item |
-| `POST /api/sessions/{id}/finalize` | `approve` / `reject` / `request_image` |
+| `POST /api/verify` | single label: declared fields JSON + image uploads → `{session_id, result, images}` |
+| `GET/POST /api/sessions/{id}[/decisions\|/finalize\|/images/{i}]` | single-label review + resolve |
+| `GET /api/manifest-template.csv` | blank manifest (UTF-8 with BOM) |
+| `POST /api/verify/batch` | upload a ZIP → pre-flight reconciliation report |
+| `POST /api/verify/batch/{id}/start` | begin processing (bounded pool; per-row isolation) |
+| `GET /api/verify/batch/{id}/events` | SSE: one event per row + progress + done |
+| `GET /api/verify/batch/{id}` | full batch state (polling fallback) |
+| `GET/POST /api/verify/batch/{id}/rows/{serial}[/…]` | per-row review + resolve |
+| `GET /api/verify/batch/{id}/export.csv` | decisions CSV |
 | `GET /api/health` | OCR availability + engine + active session count |
 
 Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swept.
@@ -107,10 +119,11 @@ Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swep
 | Multi-image applications (front / back) — checks run across all images (F-08) | done |
 | Per-stage latency measured and reported (N-03) | done |
 | **FastAPI service** — `POST /api/verify`, session store, decisions, finalize | done |
-| **React review UI** — single-label form, result screen, split-pane review (design 2.5) | done |
+| **React UI** — single-label form + result + split-pane review (design 2.5) | done |
+| **Batch** — ZIP + `manifest.csv`, pre-flight reconciliation (F-10), streamed queue, per-row review (F-05, 5.4) | done |
 | **Realistic fixture corpus** — colour / serif / borders / boxed & rotated warnings / photos | done |
 | Conditional VLM fallback behind an interface, with a working `NullVlm` (design 2.4) | interface + Null path done; Claude adapter wired, recorded-cassette test to come |
-| Batch upload + streaming, CSV manifest + pre-flight, CI, container, deploy | not yet |
+| CI, container, deploy | not yet |
 | Degradation-set preprocessing (deskew / perspective correction) | fixtures exist (realistic `loose` cases); preprocessing not yet |
 
 ## Measured on the fixture corpus
@@ -264,11 +277,15 @@ ttbverify/
   pipeline.py     verify() / verify_batch() orchestration with per-stage timing
   cli.py          python -m ttbverify
 service/
-  app.py          FastAPI: /api/verify, sessions, decisions, finalize; serves web/dist
+  app.py          FastAPI app: single-label routes, static web/dist; includes the batch router
   sessions.py     in-memory, TTL-swept session store (N-05)
+  manifest.py     CSV manifest parse + pre-flight reconciliation (design 3.4)
+  batch.py        in-memory batch store; queue ordering (design 5.4)
+  routes_batch.py ZIP upload, /start, SSE /events, per-row review, CSV export
   schemas.py      request/response models
 web/
-  src/screens/    SingleLabelForm · ResultScreen · ReviewScreen (+ LabelViewer) · DoneScreen
+  src/screens/    Home · SingleLabelForm · ResultScreen · ReviewScreen (+ LabelViewer) ·
+                  DoneScreen · BatchUpload · BatchPreflight · BatchQueue
 fixtures/
   generate.py     renders the clean 16-label corpus + ground truth -> cases.json
   realistic.py    renders the realistic corpus (colour/serif/borders/photos) -> cases_realistic.json
