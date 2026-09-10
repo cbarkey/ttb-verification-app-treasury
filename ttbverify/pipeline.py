@@ -30,6 +30,7 @@ _VISION_FIELDS = {
     "brand": "brand_name",
     "class_type": "class_type",
     "producer": "applicant_name",
+    "address": "applicant_address",
     "origin": "origin",
     "abv": "alcohol_content",
     "net_contents": "net_contents",
@@ -50,6 +51,22 @@ def verify(
     ai: AiClient | None = None,
     timeout_ms: float | None = 5000.0,
 ) -> VerificationResult:
+    """Verify one application against its label image(s).
+
+    The front door of the library. Everything else in `ttbverify` is reachable
+    from here, and the CLI, the API and the batch worker all call this.
+
+    `ocr` and `ai` default to the no-op implementations, so `verify(app)` runs
+    end to end with no OCR binary and no network — every check comes back
+    `UNREADABLE`, and nothing is ever silently approved (N-06).
+
+    `timeout_ms` is advisory: it will not interrupt work in flight, but it does
+    stop the vision fallback from starting once the budget is already gone, and
+    the overrun is recorded in `notes` rather than hidden.
+
+    Never raises for a bad image — an unreadable or missing file becomes a note
+    and an `UNREADABLE` page, because one bad image must not sink the label.
+    """
     ocr = ocr or NullOcr()
     ai = ai or NullAi()
     start = _now_ms()

@@ -46,6 +46,13 @@ _OCR_TARGET_WIDTH = 1600
 
 @dataclass
 class OcrWord:
+    """One recognized word: its text, confidence, box, and line grouping.
+
+    Casing is preserved exactly as read — W-3 checks it — and `block/par/line`
+    are what let `rules` reason about whether a match is a whole line or a
+    fragment buried in a sentence.
+    """
+
     text: str
     conf: float
     box: BoundingBox
@@ -103,6 +110,13 @@ class OcrPage:
 
 
 class OcrEngine(Protocol):
+    """What the pipeline needs from any OCR engine.
+
+    Per word: original casing, a bounding box, and a confidence. An engine
+    that lowercases on ingest or discards boxes cannot satisfy W-3 or draw
+    the review overlay, so it cannot be dropped in here (design 3.1).
+    """
+
     def read(self, image_path: str, index: int = 0, role: str | None = None) -> OcrPage:
         ...
 

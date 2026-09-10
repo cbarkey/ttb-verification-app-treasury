@@ -52,6 +52,8 @@ def _cmp_token(tok: str) -> str:
 
 @dataclass
 class WarningLocation:
+    """Where the health warning sits on the label, and the words it is made of."""
+
     page_index: int
     page_role: str | None
     words: list[OcrWord]
@@ -106,6 +108,8 @@ def locate(pages: list[OcrPage]) -> WarningLocation | None:
 
 @dataclass
 class WordingReport:
+    """W-2's verdict: which words differ from the statute, and how badly."""
+
     outcome: Outcome
     diff: list[dict]          # per-position: {pos, expected, got, kind}
     noise_positions: list[int]

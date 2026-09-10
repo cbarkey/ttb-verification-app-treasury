@@ -37,7 +37,7 @@ from ttbverify.pipeline import verify
 
 pytestmark = pytest.mark.corpus
 
-TEXT_FIELDS = ("brand", "class_type", "producer", "origin")
+TEXT_FIELDS = ("brand", "class_type", "producer", "address", "origin")
 
 
 def _all_cases() -> list[dict]:

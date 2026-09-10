@@ -20,6 +20,8 @@ MAX_SESSIONS = 200
 
 @dataclass
 class StoredImage:
+    """One uploaded image, held in memory for the life of the session (N-05)."""
+
     index: int
     role: str | None
     content_type: str
@@ -30,6 +32,8 @@ class StoredImage:
 
 @dataclass
 class Session:
+    """One single-label review: the result, plus the agent's decisions so far."""
+
     id: str
     application: LabelApplication
     images: list[StoredImage]
@@ -44,6 +48,8 @@ class Session:
 
 
 class SessionStore:
+    """In-memory, TTL-swept session store. Restarting forgets everything (N-05)."""
+
     def __init__(self, ttl: float = SESSION_TTL_SECONDS, max_size: int = MAX_SESSIONS):
         self._ttl = ttl
         self._max = max_size

@@ -74,24 +74,32 @@ class TestTheCapHoldsEndToEnd:
         assert abv.outcome is Outcome.REVIEW
         assert "40" in (abv.observed or "")
 
-    def test_the_second_image_is_only_asked_for_what_the_first_missed(self, result):
-        """The front recording answers four fields and reports no producer — the
-        bottler statement is the least legible thing on that photo. So the back
-        label gets asked, and answers. Both halves of "one call per image, for
-        what is still missing" run here against the real request builder."""
-        producer = next(c for c in result.checks if c.check_id == "producer")
-        assert producer.outcome is Outcome.REVIEW
-        assert producer.observed == "Rusty Anchor Spirits"
-        assert producer.image_index == 1  # read off the back, not the front
-        assert producer.image_role == "back"
+    def test_the_model_reads_the_whole_bottler_statement(self, result):
+        """What the live model actually returned, rather than a tidied version.
 
-    def test_low_model_confidence_is_carried_but_not_acted_on(self, result):
-        """The producer reading comes back at 0.58. It is recorded as evidence
-        and changes nothing about the outcome — there is no confidence at which
-        a model reading gets promoted."""
+        Asked for the producer, it gave the entire sentence it is printed in —
+        `Distilled and bottled by Rusty Anchor Spirits, Key West, FL` — not the
+        bare name. That is a *reading*, which is what was asked for, and it is
+        exactly why a reading is capped at REVIEW rather than compared and
+        trusted: the agent confirms it against the crop in one glance.
+        """
         producer = next(c for c in result.checks if c.check_id == "producer")
-        assert producer.evidence["model_confidence"] < 0.6
         assert producer.outcome is Outcome.REVIEW
+        assert "Rusty Anchor Spirits" in (producer.observed or "")
+
+    def test_high_model_confidence_is_carried_but_not_acted_on(self, result):
+        """The sharpest form of the cap, and it is real data.
+
+        Every reading in this recording came back at 0.9 or above — the brand at
+        0.98 — and every one of them is still REVIEW. There is no confidence at
+        which a model reading gets promoted, which is the whole reason a
+        nondeterministic component is allowed near this at all.
+        """
+        from_model = [c for c in result.checks
+                      if c.evidence.get("source") == "vision_model"]
+        assert from_model
+        assert all(c.evidence["model_confidence"] >= 0.9 for c in from_model)
+        assert all(c.outcome is Outcome.REVIEW for c in from_model)
 
 
 class TestAttribution:

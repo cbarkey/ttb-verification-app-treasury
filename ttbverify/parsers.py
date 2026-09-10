@@ -33,6 +33,12 @@ PROOF_TOLERANCE = 1.01
 
 @dataclass(frozen=True)
 class AbvReading:
+    """What a label's alcohol statement says, parsed.
+
+    Spans are character offsets into the source text, so a caller can point
+    at the figure it read rather than just reporting a number.
+    """
+
     abv: float | None
     proof: float | None
     abv_span: tuple[int, int] | None = None
@@ -47,6 +53,16 @@ class AbvReading:
 
 
 def parse_abv(text: str) -> AbvReading:
+    """Pull ABV and proof out of free text.
+
+    Handles the phrasings that actually appear on labels — `45% Alc./Vol.`,
+    `ALC 45% BY VOL`, `45% ABV`, `Alc. 45% by Vol.`, `90 proof`, `90°`.
+
+    A percentage alone is not enough: labels carry other percentages (juice
+    content, for one), so where several appear the one in alcohol *context*
+    wins. Returns an empty reading rather than raising — an unparseable
+    declaration is a `REVIEW` upstream, not a crash.
+    """
     if not text:
         return AbvReading(None, None)
 
@@ -116,6 +132,8 @@ _NET = re.compile(
 
 @dataclass(frozen=True)
 class NetContentsReading:
+    """A net-contents statement, normalized to millilitres for comparison."""
+
     milliliters: float | None
     quantity: float | None = None
     unit: str | None = None
@@ -127,11 +145,22 @@ def _canonical_unit(raw: str) -> str:
 
 
 def to_milliliters(quantity: float, unit: str) -> float | None:
+    """Convert to millilitres, or None for a unit we do not recognise.
+
+    Comparing net contents as strings would fail `750 mL` against `0.75 L`,
+    which is the same bottle (design 3.5). Everything becomes millilitres and
+    the comparison is numeric.
+    """
     factor = _UNIT_ML.get(_canonical_unit(unit))
     return None if factor is None else factor * quantity
 
 
 def parse_net_contents(text: str) -> NetContentsReading:
+    """Parse a quantity + unit out of free text (`750 mL`, `0.75 L`, `12 fl oz`).
+
+    Returns an empty reading when nothing parses, which upstream turns into
+    `REVIEW` — never a mismatch against a value we failed to understand.
+    """
     if not text:
         return NetContentsReading(None)
     m = _NET.search(text)

@@ -84,6 +84,89 @@ below.
 **Testing that asserts what each check *read*, not just what it decided.** This caught two real
 defects that outcome-only tests passed straight over. Detail below.
 
+## How it works
+
+One label through the pipeline. Every box before the dashed line is deterministic code; the
+model is consulted only when OCR has already failed, and what it returns can only ever become
+`REVIEW`.
+
+```mermaid
+flowchart TD
+    A["Application values<br/>+ label image(s)"] --> B[Ingest<br/>EXIF orient · validate · decode]
+    B --> C[Deskew / keystone<br/>scored, applied only if it wins]
+    C --> D["OCR — Tesseract TSV<br/>text + box + confidence per word"]
+    D --> E[Field rules<br/>brand · class/type · ABV · proof<br/>net contents · producer · address · origin]
+    D --> F[Health warning<br/>W-1 present · W-2 wording<br/>W-3 caps · W-4 bold]
+    E --> G{Any field still<br/>UNREADABLE?}
+    F --> G
+    G -->|No| R[Result + per-field evidence]
+    G -->|Yes, and a model is configured| V
+    G -->|Yes, no model / firewalled| R
+
+    subgraph AI ["conditional — one call per image"]
+        V["Vision model reads<br/>the missing fields"] --> W["Capped at REVIEW<br/>never PASS, never FAIL"]
+    end
+    W --> R
+
+    R --> S[Review screen<br/>evidence boxed on the image]
+
+    style AI stroke-dasharray: 5 5
+    style W fill:#fde68a,stroke:#b45309,color:#000
+    style C fill:#dbeafe,stroke:#1d4ed8,color:#000
+```
+
+**Why the cap is drawn where it is.** "Zero false approvals" is a property of the deterministic
+half, gated in CI against corpora that can be re-run. A component that could mint a `PASS` would
+move a proven property into the merely-likely column — so a model reading raises an item to a
+human, and can never clear one.
+
+### How a single check decides
+
+The third and fourth outcomes are the point. An unreadable photo is not a compliance failure,
+and a value the applicant never declared is not a mismatch.
+
+```mermaid
+flowchart TD
+    A[One field] --> B{Declared on<br/>the application?}
+    B -->|No| N["NOT_DECLARED<br/><i>no comparison made</i>"]
+    B -->|Yes| C{Located and<br/>read on the label?}
+    C -->|"No — OCR unavailable<br/>or below confidence floor"| U["UNREADABLE<br/><i>request a better image</i>"]
+    C -->|Yes| D{Compare}
+    D -->|"exact · case · punctuation"| P[PASS]
+    D -->|"fuzzy ≥ 0.92, or a judgement<br/>the machine shouldn't make alone"| RV["REVIEW<br/><i>needs your review</i>"]
+    D -->|"genuinely different"| F["FAIL<br/><i>with the evidence</i>"]
+
+    style N fill:#e5e7eb,stroke:#6b7280,color:#000
+    style U fill:#e5e7eb,stroke:#374151,color:#000
+    style P fill:#d1fae5,stroke:#047857,color:#000
+    style RV fill:#fef3c7,stroke:#b45309,color:#000
+    style F fill:#fee2e2,stroke:#b91c1c,color:#000
+```
+
+**Never emit `PASS` for a check that wasn't actually performed.** That rule is what makes the
+left-hand branches matter: OCR unavailable, confidence below the floor, or field not located all
+end at `UNREADABLE`, never at a silent pass.
+
+### Batch
+
+```mermaid
+flowchart LR
+    A["ZIP<br/>manifest.csv + images"] --> B[Pre-flight reconciliation]
+    B -->|"missing images · duplicate serials<br/>unparseable values · bad columns"| X[Fix and re-upload<br/><i>nothing processed</i>]
+    B -->|Agent confirms| C[Worker pool<br/>sized to the machine]
+    C --> D[Results stream in<br/>SSE, exceptions first]
+    D --> E[Work the exception queue<br/>same review screen, next/prev]
+    E --> F[CSV export]
+    D -.->|"once, after completion"| G["AI triage brief<br/><i>advisory, above the table</i>"]
+
+    style G fill:#fef3c7,stroke:#b45309,color:#000
+    style X fill:#fee2e2,stroke:#b91c1c,color:#000
+```
+
+Pre-flight runs before any OCR, so nobody watches 300 labels process only to find row 12 was
+broken. The brief fires once after the batch completes — cost and latency are negligible, and if
+it fails the brief is simply absent and no row changes.
+
 ## Requirements, traced to the interviews
 
 The brief's "Technical Requirements" section is deliberately thin — the real requirements are
@@ -165,6 +248,7 @@ In rough priority order, if this went past prototype:
   repository generates. The honest next step is a back-test against historical COLA submissions
   and their actual agent decisions — that turns "0 false approvals on our corpus" into a claim
   about the real distribution, and would surface label conventions no synthetic generator invents.
+- **Turn into a true pipeline.** Currently, this product needs a handmade csv and photos in a zip file to function. That can easily be reaplaced by a data pipeline that takes the application itself.
 - **Watch agents use it and interview them afterwards**, the same way the brief's own discovery
   sessions were run. The review screen is a hypothesis about what an agent needs; Dave and Jenny
   would find its rough edges in an afternoon. Specifically worth testing: whether the `REVIEW`
@@ -384,6 +468,7 @@ rather than substituted, and the remaining 48 still calibrate the threshold.
 | Brand / class-type matching via the 4-tier normalization ladder | done |
 | Display admissibility so a fine-print brand string isn't a false match (design 3.2) | done |
 | ABV parsing across label phrasings; proof-vs-ABV (`proof == 2 × ABV`) consistency | done |
+| Producer **name and address** — the brief lists them as one element | done |
 | Net contents with unit normalization (mL / cL / L / fl oz / pt) | done |
 | Health warning W-1 presence, W-2 wording (two-band), W-3 capitalization | done |
 | W-4 boldness — confidence-gated auto-confirm against the statement's own regular text | done |
@@ -588,11 +673,6 @@ Stated rather than hidden — all of these are live behaviour today.
 - **ABV is compared exactly**, near-misses (≤ 0.5%) routed to `REVIEW`. Per-commodity
   regulatory tolerances exist and are deliberately **not** asserted — a prototype shouldn't
   claim tolerance values it hasn't verified against current regulation.
-- **The committed AI cassettes are hand-authored**, not recorded, because the repository was
-  built without an API key. Each one says so in a `note` field, and
-  `python scripts/record_cassettes.py --record` replaces them with real recordings. What they
-  test is unaffected — the request fingerprint, schema validation, the cap, attribution and
-  every degradation path are real — but they are not evidence about what the model returns.
 - **Fixture corpora are platform-dependent.** The generators use system fonts, so a corpus
   rendered on Linux differs from one rendered on Windows. Both audit clean and pass every
   gate; the images themselves just aren't byte-identical across machines.

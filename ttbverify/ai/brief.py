@@ -59,6 +59,8 @@ _SCHEMA = {
 
 @dataclass(frozen=True)
 class Group:
+    """One cluster of exceptions a supervisor can work as a single job."""
+
     label: str
     count: int
     detail: str

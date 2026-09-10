@@ -82,6 +82,8 @@ def _font(names: list[str], size: int) -> ImageFont.FreeTypeFont:
 
 @dataclass
 class BCase:
+    """One matched bold/not-bold warning header, and what it is meant to prove."""
+
     case_id: str
     family: str
     size: int
@@ -247,6 +249,7 @@ def _usable(cases: list[BCase]) -> list[BCase]:
 
 
 def main() -> None:
+    """Render the W-4 calibration corpus, skipping cases this machine cannot."""
     os.makedirs(IMAGES_DIR, exist_ok=True)
     records = [c.to_record() for c in _usable(_cases())]
     with open(CASES_JSON, "w", encoding="utf-8") as fh:

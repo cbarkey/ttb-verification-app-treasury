@@ -49,6 +49,8 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 # --------------------------------------------------------------------------
 
 class Sheet:
+    """A label canvas: draw text onto it, then save. Shrinks display text to fit."""
+
     def __init__(self, height: int = H):
         self.img = Image.new("RGB", (W, height), WHITE)
         self.draw = ImageDraw.Draw(self.img)
@@ -143,6 +145,8 @@ def _warning_runs(mode: str) -> list[tuple[str, ImageFont.FreeTypeFont]]:
 
 @dataclass
 class Case:
+    """One clean fixture label: its declared values, its defect, its ground truth."""
+
     case_id: str
     description: str
     commodity: str
@@ -259,6 +263,17 @@ class Case:
             "class_type": text_fact(self.class_type,
                                     self.label_class_type or self.class_type, front),
             "producer": text_fact(self.applicant_name, self.applicant_name, front),
+            # Printed only where the bottler statement this label actually
+            # renders contains it: a case with a custom producer line may name
+            # a different city than the application declared, which is a real
+            # mismatch and must read as `not_found`, not as a match.
+            "address": text_fact(
+                self.applicant_address,
+                self.applicant_address
+                if (self.applicant_address
+                    and self.applicant_address in self._fine_print)
+                else None,
+                front, self._fine_print),
             "origin": text_fact(
                 self.origin,
                 self.origin if (self.label_origin_text and self.origin
@@ -645,6 +660,7 @@ def _report_audit(problems: list[str]) -> None:
 
 
 def main() -> None:
+    """Render the clean corpus, write its ground truth, audit the result."""
     os.makedirs(IMAGES_DIR, exist_ok=True)
     records = [c.to_record() for c in _cases()]
     problems = audit_corpus(records)

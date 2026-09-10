@@ -29,6 +29,8 @@ ALL_COLUMNS = REQUIRED_COLUMNS + OPTIONAL_COLUMNS
 
 @dataclass
 class ManifestRow:
+    """One parsed CSV row, with whatever was wrong with it."""
+
     line: int                       # 1-based row number in the file (excl. header)
     serial_number: str
     fields: dict                    # the canonical-schema field values (no images)
@@ -42,6 +44,8 @@ class ManifestRow:
 
 @dataclass
 class PreflightReport:
+    """What reconciliation found, before any OCR runs (F-10)."""
+
     rows: list[ManifestRow]
     missing_columns: list[str] = field(default_factory=list)
     rows_missing_images: list[dict] = field(default_factory=list)   # {line, serial, missing}

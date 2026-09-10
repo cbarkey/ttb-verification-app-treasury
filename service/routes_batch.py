@@ -97,6 +97,12 @@ def batch_workers() -> int:
 
 
 def make_batch_router(*, ocr, ai) -> APIRouter:
+    """Build the batch routes over one OCR engine and one AI client.
+
+    Takes them as arguments rather than importing globals so a test can hand
+    in stubs, and so the app factory decides once what this deployment has.
+    """
+
     router = APIRouter(prefix="/api")
     store = BatchStore()
     router.batch_store = store  # exposed for tests / health

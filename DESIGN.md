@@ -837,13 +837,18 @@ decorative ones.
   would let a model *downgrade an existing FAIL to REVIEW*, which is the same power to
   soften a rejection that the cap exists to withhold, arriving through the back door. The
   cost is `r12_lowlight`'s producer, which stays a FAIL on the deterministic path.
-* **Cassettes are hand-authored, not recorded.** This repository was built with no
-  `ANTHROPIC_API_KEY`, so no live reply could be captured. Each cassette says so in a `note`
-  field, the values are the fixtures' own ground truth, and
-  `python scripts/record_cassettes.py --record` re-records them properly against the API.
-  What they test is unaffected — the request fingerprint, the schema validation, the cap, the
-  attribution and the degradation paths are all real — but they are not evidence about what
-  the model actually returns.
+* **Cassettes are recorded against the live API**, not hand-authored. The first set was
+  hand-authored because the repository was built with no key; they were re-recorded once one
+  existed, and the real reply was more useful than the invention. It read the producer off the
+  *front* image at 0.9 confidence — where the hand-authored version had assumed the front
+  couldn't manage it — and returned the whole bottler statement (`Distilled and bottled by
+  Rusty Anchor Spirits, Key West, FL`) rather than the bare name. Two tests that encoded the
+  invented scenario were rewritten to assert what actually happens; the two-image path they
+  used to cover is exercised with stubs in `test_pipeline.py` instead.
+
+  The replacement is a *stronger* demonstration of the cap: every reading in the recording
+  comes back at 0.9 or above, the brand at 0.98, and every one is still `REVIEW`.
+
 * **`scripts/record_cassettes.py` records by running the real pipeline** rather than from a
   hand-written list of requests. A list would be a second implementation of "what does the
   pipeline ask for", and since the cassette key covers the prompt, the schema *and* the image
@@ -1185,7 +1190,7 @@ everything below from scratch.
 
 | | |
 |---|---|
-| Verification core | brand, class/type, ABV, proof, net contents, producer, origin + W-1..W-4 |
+| Verification core | brand, class/type, ABV, proof, net contents, producer, **address**, origin + W-1..W-4 |
 | Preprocessing | deskew / keystone, scored per image, applied only when it wins (3.9) |
 | AI | vision fallback (capped at REVIEW), batch triage brief, drafted rejection notices — 2.9 |
 | Interfaces | CLI (`python -m ttbverify`), FastAPI service, React UI (single label **and** batch) |
@@ -1200,7 +1205,10 @@ everything below from scratch.
 ### Decisions and tunables to preserve
 
 - **Check IDs are short slugs** — `brand`, `class_type`, `abv`, `proof`, `net_contents`,
-  `producer`, `origin`, `warn_present`, `warn_text`, `warn_case`, `warn_bold`. They key the
+  `producer`, `address`, `origin`, `warn_present`, `warn_text`, `warn_case`, `warn_bold`.
+  `address` was added late, after auditing against the brief: it lists "name **and address**
+  of bottler/producer" as one element, and the address was being accepted by the schema, the
+  manifest and the API while never being verified. They key the
   review-screen rows, the CSV export and the overlay tags. `proof` is its own check, emitted
   only when proof is actually printed on the label.
 - **Verdict precedence** (`models._VERDICT_ORDER`): FAIL > UNREADABLE > REVIEW > PASS >

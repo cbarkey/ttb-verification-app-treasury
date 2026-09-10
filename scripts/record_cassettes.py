@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fixtures import cassette_application
-from ttbverify.ai.client import CASSETTE_DIR, AiRequest, CassetteAi, ClaudeAi
+from ttbverify.ai.client import CASSETTE_DIR, AiRequest, CassetteAi, ClaudeAi, load_env_file
 from ttbverify.ocr import NullOcr
 from ttbverify.pipeline import verify
 
@@ -58,6 +58,7 @@ class Watching:
 
 
 def main() -> int:
+    """List what the pipeline asks the model, and optionally record it."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--record", action="store_true",
                     help="call the live API for anything not already recorded")
@@ -65,6 +66,9 @@ def main() -> int:
 
     live = None
     if args.record:
+        # This is an entrypoint, so reading .env here is right — see the note in
+        # `load_env_file`. It never happens inside the library or the app factory.
+        load_env_file()
         live = ClaudeAi()
         if not live.available:
             print(f"cannot record: {live.unavailable_reason}")

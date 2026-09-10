@@ -49,6 +49,8 @@ OUTCOME_LABEL = {
 
 
 class Commodity(str, enum.Enum):
+    """Beverage class. Determines which requirements apply to a label."""
+
     WINE = "wine"
     MALT = "malt"
     SPIRITS = "spirits"
@@ -222,6 +224,14 @@ _VERDICT_ORDER = [
 
 @dataclass
 class VerificationResult:
+    """Everything one label check produced: verdicts, evidence, and timings.
+
+    `verdict` is the worst outcome present, not an average — one FAIL makes
+    the label a FAIL. `notes` carries anything the agent should know that
+    isn't a per-field finding: a straightened image, an unreadable upload, a
+    model consulted, a budget overrun.
+    """
+
     application_key: str
     checks: list[CheckResult]
     elapsed_ms: int = 0

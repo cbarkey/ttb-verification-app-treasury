@@ -38,6 +38,8 @@ FIELD_NAMES = {
                   "Bourbon Whiskey\", \"London Dry Gin\", \"Bordeaux Superieur\"",
     "producer": "the bottler or producer name from the \"Bottled by\" / "
                 "\"Produced by\" / \"Distilled by\" statement",
+    "address": "the city and state (or city and country) printed with the "
+               "bottler/producer name, e.g. \"Bardstown, KY\"",
     "origin": "the country-of-origin statement, e.g. \"Product of France\"",
     "abv": "the alcohol content exactly as printed, e.g. \"45% Alc./Vol. (90 Proof)\"",
     "net_contents": "the net contents exactly as printed, e.g. \"750 mL\"",

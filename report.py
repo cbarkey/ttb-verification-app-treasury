@@ -70,6 +70,7 @@ def _overlay(app: LabelApplication, result, path: str) -> None:
 
 
 def main() -> int:
+    """Run every corpus, print the gates, render the review overlays."""
     cases = load_cases()
     engine = TesseractOcr() if TesseractOcr.is_available() else NullOcr()
     if isinstance(engine, NullOcr):
@@ -167,7 +168,7 @@ def _field_reading_report(engine) -> bool:
         return True
 
     fields = ["brand", "class_type", "abv", "proof", "net_contents",
-              "producer", "origin"]
+              "producer", "address", "origin"]
     bar = "=" * 92
     print()
     print(bar)

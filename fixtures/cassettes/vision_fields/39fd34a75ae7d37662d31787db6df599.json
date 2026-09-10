@@ -1,0 +1,37 @@
+{
+  "data": {
+    "fields": [
+      {
+        "confidence": 0.98,
+        "name": "brand",
+        "text": "RUSTY ANCHOR"
+      },
+      {
+        "confidence": 0.95,
+        "name": "class_type",
+        "text": "Aged Caribbean Rum"
+      },
+      {
+        "confidence": 0.97,
+        "name": "abv",
+        "text": "40% ALC./VOL. (80 PROOF)"
+      },
+      {
+        "confidence": 0.97,
+        "name": "net_contents",
+        "text": "750 mL"
+      },
+      {
+        "confidence": 0.9,
+        "name": "producer",
+        "text": "Distilled and bottled by Rusty Anchor Spirits, Key West, FL"
+      }
+    ]
+  },
+  "error": null,
+  "kind": "vision_fields",
+  "model": "claude-sonnet-5",
+  "ok": true,
+  "prompt": "You are assisting a US TTB (Alcohol and Tobacco Tax and Trade Bureau) compliance\nagent who is reviewing an alcohol beverage label. Optical character recognition\nhas already run on this image and failed to read the fields listed below \u2014 the\nphotograph is blurred, badly lit, at an angle, or has glare.\n\nYour job is to READ, not to judge. You are not deciding whether this label\ncomplies with anything, and you are not being asked whether the label matches an\napplication. Another system does that. Report only what is physically printed on\nthe image.\n\nFields still needed:\n- brand: the brand name in display type \u2014 the label's own name for the product. Not the producer's corporate name in the small print at the bottom, unless the same words also appear as the display brand\n- class_type: the class or type designation, e.g. \"Kentucky Straight Bourbon Whiskey\", \"London Dry Gin\", \"Bordeaux Superieur\"\n- abv: the alcohol content exactly as printed, e.g. \"45% Alc./Vol. (90 Proof)\"\n- net_contents: the net contents exactly as printed, e.g. \"750 mL\"\n- producer: the bottler or producer name from the \"Bottled by\" / \"Produced by\" / \"Distilled by\" statement\n\nRules:\n- Transcribe exactly as printed, preserving capitalization, punctuation and\n  spacing. \"STONE'S THROW\" is not \"Stone's Throw\".\n- If a field does not appear on this image, return null for it. Do not infer it\n  from the beverage type, the producer, or anything else on the label. A missing\n  field reported as null is a useful answer; a guess is a harmful one.\n- If you can make out only part of a field, return the part you can actually\n  read and lower your confidence accordingly.\n- confidence is 0 to 1 and should reflect legibility, not plausibility.",
+  "recorded_from": "live API"
+}

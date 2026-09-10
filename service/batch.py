@@ -24,6 +24,8 @@ MAX_ZIP_BYTES = 250 * 1024 * 1024
 
 @dataclass
 class BatchRow:
+    """One manifest row: its images, its result, and the agent's decisions."""
+
     serial_number: str
     line: int
     fields: dict | None                       # canonical-schema values; None if blocked
@@ -88,6 +90,8 @@ _VERDICT_SORT = {"ERROR": 0, "FAIL": 1, "UNREADABLE": 2, "REVIEW": 3,
 
 @dataclass
 class Batch:
+    """One uploaded ZIP: its pre-flight report, its rows, and the triage brief."""
+
     id: str
     rows: list[BatchRow]
     preflight: PreflightReport
@@ -149,6 +153,8 @@ class Batch:
 
 
 class BatchStore:
+    """In-memory, TTL-swept batch store. Same lifetime rules as sessions (N-05)."""
+
     def __init__(self, ttl: float = BATCH_TTL_SECONDS, max_size: int = MAX_BATCHES):
         self._ttl = ttl
         self._max = max_size

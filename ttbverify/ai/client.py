@@ -167,6 +167,8 @@ class AiResult:
 
 
 class AiClient(Protocol):
+    """The one interface anything model-shaped must satisfy (N-06)."""
+
     @property
     def available(self) -> bool: ...
 
@@ -181,6 +183,8 @@ class AiClient(Protocol):
 # --------------------------------------------------------------------------
 
 class SchemaError(ValueError):
+    """A model reply that does not match its schema. Treated as no reply."""
+
     pass
 
 

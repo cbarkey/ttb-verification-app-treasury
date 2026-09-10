@@ -41,6 +41,8 @@ _SCHEMA = {
 
 @dataclass(frozen=True)
 class Notice:
+    """A drafted rejection notice. Advisory: the agent edits and owns it."""
+
     subject: str
     body: str
     items: list[str] = field(default_factory=list)

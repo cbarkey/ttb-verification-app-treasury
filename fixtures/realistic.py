@@ -67,6 +67,8 @@ BODY_SANS = ["calibri.ttf", "arial.ttf", "DejaVuSans.ttf"]
 
 @dataclass(frozen=True)
 class Theme:
+    """A label's visual identity — ground colour, display face, accent, rules."""
+
     bg: tuple
     bg2: tuple           # gradient partner (== bg for flat)
     ink: tuple
@@ -105,6 +107,8 @@ GIN = Theme(
 # --------------------------------------------------------------------------
 
 class Sheet:
+    """A styled label canvas: colour, borders, serif display faces, fitted text."""
+
     def __init__(self, w: int, h: int, theme: Theme, flat: bool = False):
         self.w, self.h, self.t = w, h, theme
         self.img = Image.new("RGB", (w, h), theme.bg)
@@ -293,6 +297,7 @@ class Sheet:
 
 
 def warning_runs(theme: Theme, mode: str, size: int = 15):
+    """The health warning as (text, font) runs — header bold, body regular."""
     body = REFERENCE_WARNING.split(": ", 1)[1]
     header = "Government Warning:" if mode == "titlecase" else "GOVERNMENT WARNING:"
     if mode == "reworded":
@@ -338,6 +343,7 @@ def _perspective(img: Image.Image, k: float) -> Image.Image:
 
 def degrade(img: Image.Image, *, rotate=0.0, blur=0.0, vignette=0.0, jpeg=0,
             perspective=0.0) -> tuple[Image.Image, str]:
+    """Make a label look photographed: perspective, rotation, blur, vignette, JPEG."""
     if perspective:
         # A degenerate quad just means "no keystone on this one"; the fixture is
         # still a valid test of everything else.
@@ -371,6 +377,8 @@ _THEMES = {"whiskey": WHISKEY, "rum": RUM_DARK, "wine": WINE, "gin": GIN}
 
 @dataclass
 class RCase:
+    """One realistic fixture: styled, optionally photographed, with ground truth."""
+
     case_id: str
     grade: str                       # "exact" | "loose"
     commodity: str                   # wine | malt | spirits
@@ -552,6 +560,17 @@ class RCase:
                                brand_on, self._fine_print),
             "class_type": text_fact(self.class_type, self.class_type, front),
             "producer": text_fact(self.applicant_name, self.applicant_name, front),
+            # Printed only where the bottler statement this label actually
+            # renders contains it: a case with a custom producer line may name
+            # a different city than the application declared, which is a real
+            # mismatch and must read as `not_found`, not as a match.
+            "address": text_fact(
+                self.applicant_address,
+                self.applicant_address
+                if (self.applicant_address
+                    and self.applicant_address in self._fine_print)
+                else None,
+                front, self._fine_print),
             "origin": text_fact(
                 self.origin,
                 self.origin if (self.label_origin_text and self.origin
@@ -821,6 +840,7 @@ def _report_audit(problems: list[str]) -> None:
 
 
 def main() -> None:
+    """Render the realistic corpus, write ground truth, audit the result."""
     os.makedirs(IMAGES_DIR, exist_ok=True)
     records = [c.to_record() for c in _cases()]
     problems = audit_corpus(records)

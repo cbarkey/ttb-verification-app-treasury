@@ -89,6 +89,7 @@ def _print_human(result) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse arguments, verify one application, print the result."""
     parser = argparse.ArgumentParser(prog="ttbverify", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     src = parser.add_mutually_exclusive_group(required=True)

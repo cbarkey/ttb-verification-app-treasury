@@ -41,6 +41,13 @@ _WS = re.compile(r"\s+")
 
 @dataclass(frozen=True)
 class MatchResult:
+    """The verdict of one comparison, plus *which tier* produced it.
+
+    The tier is not bookkeeping: the UI says "matched after ignoring
+    capitalization" rather than a bare "pass", which is what makes a finding
+    explainable (F-09).
+    """
+
     outcome: Outcome
     tier: str          # exact | case | punctuation | fuzzy | mismatch
     similarity: float   # 1.0 for tiers 1-3; computed ratio for fuzzy/mismatch
@@ -52,10 +59,14 @@ class MatchResult:
 
 
 def collapse_ws(text: str) -> str:
+    """Tier-1 form: collapse runs of whitespace, strip the ends."""
+
     return _WS.sub(" ", text).strip()
 
 
 def casefold(text: str) -> str:
+    """Tier-2 form: whitespace-collapsed and case-folded. The `STONE'S THROW` tier."""
+
     return collapse_ws(text).casefold()
 
 

@@ -35,6 +35,8 @@ class DeclaredFields(BaseModel):
 
 
 class ImageMeta(BaseModel):
+    """One uploaded image, and the URL the UI fetches it back from."""
+
     index: int
     role: str | None
     width: int
@@ -43,33 +45,45 @@ class ImageMeta(BaseModel):
 
 
 class VerifyResponse(BaseModel):
+    """What `POST /api/verify` returns: the result plus a session to review it in."""
+
     session_id: str
     result: dict[str, Any]
     images: list[ImageMeta]
 
 
 class DecisionRequest(BaseModel):
+    """An agent resolving one REVIEW item."""
+
     check_id: str
     decision: Literal["accept", "reject"]
 
 
 class DecisionResponse(BaseModel):
+    """Decisions so far, and whether anything still blocks approval."""
+
     decisions: dict[str, str]
     unresolved_review_ids: list[str]
     can_finalize: bool
 
 
 class FinalizeRequest(BaseModel):
+    """The agent's final call on a label."""
+
     action: Literal["approve", "reject", "request_image"]
 
 
 class FinalizeResponse(BaseModel):
+    """Confirmation of a finalized label."""
+
     session_id: str
     action: str
     decisions: dict[str, str]
 
 
 class SessionResponse(BaseModel):
+    """Full review state for one label: result, images, decisions, what remains."""
+
     session_id: str
     result: dict[str, Any]
     images: list[ImageMeta]
@@ -91,6 +105,8 @@ class NoticeResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    """What this deployment actually has: OCR engine, model, live sessions."""
+
     status: str
     ocr: str
     ocr_engine: str
