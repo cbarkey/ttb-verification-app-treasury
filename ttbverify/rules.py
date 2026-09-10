@@ -101,7 +101,12 @@ def _line_window(line: list[OcrWord], want: int) -> list[OcrWord]:
 
 def _blocks(lines: list[list[OcrWord]]) -> list[list[OcrWord]]:
     """Group vertically-adjacent lines so a value wrapped across two lines
-    (a long brand name, an address) can still be matched as one run."""
+    (a long brand name, an address) can still be matched as one run.
+
+    Only merges lines of *similar* height — a wrapped brand's two lines are the
+    same size; a brand followed by a smaller class/type line is not, and must
+    stay separate so its box doesn't swallow the subhead.
+    """
     out: list[list[OcrWord]] = []
     for line in lines:
         if not line:
@@ -109,8 +114,12 @@ def _blocks(lines: list[list[OcrWord]]) -> list[list[OcrWord]]:
         top = min(w.box.top for w in line)
         h = max(w.box.height for w in line)
         if out:
-            prev_bottom = max(w.box.bottom for w in out[-1])
-            if 0 <= top - prev_bottom <= 0.9 * h:
+            prev = out[-1]
+            prev_bottom = max(w.box.bottom for w in prev)
+            prev_h = max(w.box.height for w in prev)
+            close = 0 <= top - prev_bottom <= 0.9 * h
+            similar = abs(h - prev_h) <= 0.25 * max(h, prev_h)
+            if close and similar:
                 out[-1].extend(line)
                 continue
         out.append(list(line))

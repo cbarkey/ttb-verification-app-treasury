@@ -1,13 +1,21 @@
-import { useMemo, useState } from "react";
-import { finalize, recordDecision } from "../api";
+import { useEffect, useMemo, useState } from "react";
 import { NEEDS_ATTENTION, OUTCOME_STYLE } from "../outcome";
-import type { Check, SessionState } from "../types";
+import type { Check, ReviewData } from "../types";
 import { LabelViewer } from "./LabelViewer";
 
+export interface ReviewNav {
+  index: number;
+  total: number;
+  onPrev?: () => void;
+  onNext?: () => void;
+}
+
 interface Props {
-  session: SessionState;
-  onSessionChange: (s: SessionState) => void;
-  onFinalized: (sessionId: string) => void;
+  data: ReviewData;
+  title?: string;
+  nav?: ReviewNav;
+  onDecide: (checkId: string, decision: "accept" | "reject") => Promise<ReviewData>;
+  onFinalize: (action: "approve" | "reject" | "request_image") => void;
 }
 
 function decisionLabels(c: Check): { accept: string; reject: string } {
@@ -16,8 +24,8 @@ function decisionLabels(c: Check): { accept: string; reject: string } {
   return { accept: "Accept", reject: "Reject" };
 }
 
-export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
-  const { result, images } = session;
+export function ReviewScreen({ data, title, nav, onDecide, onFinalize }: Props) {
+  const { result, images } = data;
 
   const attention = useMemo(
     () => result.checks.filter((c) => NEEDS_ATTENTION.includes(c.outcome)),
@@ -25,13 +33,21 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
   );
   const passed = result.checks.filter((c) => !NEEDS_ATTENTION.includes(c.outcome));
 
-  const [activeId, setActiveId] = useState<string | null>(
-    attention.find((c) => c.box)?.check_id ?? attention[0]?.check_id ?? null,
-  );
+  const firstId =
+    attention.find((c) => c.box)?.check_id ?? attention[0]?.check_id ?? null;
+  const [activeId, setActiveId] = useState<string | null>(firstId);
   const active = result.checks.find((c) => c.check_id === activeId) ?? null;
   const [tab, setTab] = useState<number>(active?.image_index ?? 0);
   const [showPassed, setShowPassed] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // reset selection when the underlying row changes (batch next/prev)
+  useEffect(() => {
+    setActiveId(firstId);
+    setTab(0);
+    setShowPassed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
   const pick = (id: string) => {
     setActiveId(id);
@@ -42,8 +58,7 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
   const decide = async (checkId: string, decision: "accept" | "reject") => {
     setBusy(true);
     try {
-      const next = await recordDecision(session.session_id, checkId, decision);
-      onSessionChange(next);
+      const next = await onDecide(checkId, decision);
       const stillOpen = next.unresolved_review_ids;
       if (stillOpen.length) pick(stillOpen[0]);
     } finally {
@@ -53,7 +68,7 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
 
   const doFinalize = async (action: "approve" | "reject" | "request_image") => {
     setBusy(true);
-    onFinalized((await finalize(session.session_id, action)).session_id);
+    onFinalize(action);
   };
 
   const checksOnTab = result.checks.filter((c) => c.box && c.image_index === tab);
@@ -64,10 +79,36 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
         {/* LEFT — checks */}
         <div className="border-r border-zinc-200 bg-white overflow-y-auto">
           <div className="px-5 py-4 border-b border-zinc-100">
+            {(title || nav) && (
+              <div className="flex items-center gap-2 mb-1 text-sm text-zinc-500">
+                {nav && (
+                  <>
+                    <button
+                      onClick={nav.onPrev}
+                      disabled={!nav.onPrev}
+                      className="rounded px-1.5 hover:bg-zinc-100 disabled:opacity-30"
+                    >
+                      ‹
+                    </button>
+                    <span>
+                      {nav.index + 1} of {nav.total}
+                    </span>
+                    <button
+                      onClick={nav.onNext}
+                      disabled={!nav.onNext}
+                      className="rounded px-1.5 hover:bg-zinc-100 disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+                {title && <span className="font-medium text-zinc-700">{title}</span>}
+              </div>
+            )}
             <p className="text-lg font-semibold">{result.summary_line}</p>
             <p className="text-sm text-zinc-500">
-              {session.unresolved_review_ids.length > 0
-                ? `${session.unresolved_review_ids.length} still to resolve`
+              {data.unresolved_review_ids.length > 0
+                ? `${data.unresolved_review_ids.length} still to resolve`
                 : "all review items resolved"}
             </p>
           </div>
@@ -78,7 +119,7 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
                 key={c.check_id}
                 check={c}
                 active={c.check_id === activeId}
-                decision={session.decisions[c.check_id]}
+                decision={data.decisions[c.check_id]}
                 busy={busy}
                 onSelect={() => pick(c.check_id)}
                 onDecide={decide}
@@ -147,7 +188,7 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
 
       {/* FOOTER — the one decision that matters */}
       <div className="border-t border-zinc-200 bg-white px-5 py-3 flex flex-wrap gap-3 justify-end items-center">
-        {!session.can_finalize && (
+        {!data.can_finalize && (
           <span className="mr-auto text-sm text-amber-700">
             Resolve the review items above to enable Approve.
           </span>
@@ -167,7 +208,7 @@ export function ReviewScreen({ session, onSessionChange, onFinalized }: Props) {
           Reject
         </button>
         <button
-          disabled={busy || !session.can_finalize}
+          disabled={busy || !data.can_finalize}
           onClick={() => doFinalize("approve")}
           className="rounded-lg bg-emerald-600 px-6 py-2.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
         >

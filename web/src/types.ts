@@ -62,6 +62,71 @@ export interface SessionState {
   finalized: string | null;
 }
 
+// ---- batch ---------------------------------------------------------------
+
+export interface PreflightReport {
+  fatal: string | null;
+  missing_columns: string[];
+  row_count: number;
+  ok_count: number;
+  blocked_count: number;
+  rows_missing_images: { line: number; serial: string; missing: string[] }[];
+  unreferenced_images: string[];
+  duplicate_serials: string[];
+  unparseable_values: { line: number; serial: string; field: string; value: string }[];
+  row_errors: { line: number; serial: string; errors: string[] }[];
+  can_proceed: boolean;
+}
+
+export interface BatchRowSummary {
+  serial_number: string;
+  line: number;
+  brand_name: string;
+  status: "pending" | "running" | "done" | "error";
+  verdict: string;
+  blocked_reason: string | null;
+  error: string | null;
+  needs_attention: number;
+  elapsed_ms: number | null;
+  unresolved_review_ids: string[];
+  can_finalize: boolean;
+  finalized: string | null;
+}
+
+export interface BatchState {
+  batch_id: string;
+  state: "ready" | "running" | "complete";
+  progress: { done: number; total: number; state: string };
+  preflight: PreflightReport;
+  rows: BatchRowSummary[];
+  exception_serials: string[];
+}
+
+export interface BatchRowState {
+  serial_number: string;
+  verdict: string;
+  status: string;
+  blocked_reason: string | null;
+  error: string | null;
+  result: VerificationResult | null;
+  images: ImageMeta[];
+  decisions: Record<string, "accept" | "reject">;
+  unresolved_review_ids: string[];
+  can_finalize: boolean;
+  finalized: string | null;
+}
+
+/** The shape ReviewScreen needs — both a single-label session and a batch row
+ *  can be adapted to this. */
+export interface ReviewData {
+  result: VerificationResult;
+  images: ImageMeta[];
+  decisions: Record<string, "accept" | "reject">;
+  unresolved_review_ids: string[];
+  can_finalize: boolean;
+  finalized: string | null;
+}
+
 export type Commodity = "wine" | "malt" | "spirits";
 
 export interface DeclaredFields {
