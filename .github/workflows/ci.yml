@@ -1,0 +1,171 @@
+# CI for the TTB label verification prototype.
+#
+# Mirrors CLAUDE.md 2.6: lint -> tests -> accuracy gates -> frontend -> container.
+# Three things here are deliberate and worth not "fixing" later:
+#
+#   * **No step can reach a model, and none needs to.** `NullAi` is the default
+#     and the model-backed paths replay committed cassettes (2.9). If a test in
+#     here ever needs an API key, the design has gone wrong, not the workflow.
+#
+#   * **The clean and boldness corpora are regenerated; the realistic one is
+#     not.** The generators pick system fonts, so a corpus rendered on Ubuntu is
+#     not byte-identical to one rendered on Windows — verified, not assumed. The
+#     realistic corpus is therefore committed and audited in place rather than
+#     re-rendered, and the boldness generator drops any case whose fonts would
+#     have silently substituted instead of quietly testing something else.
+#
+#   * **Everything is byte-compiled**, including modules no test imports. The
+#     fixture generators are only ever run by hand and one of them shipped with
+#     a syntax error that the whole suite passed straight over.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Lint, tests, accuracy gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Tesseract
+        # The OCR engine is a system binary, not a Python package — see the
+        # rationale at the top of ttbverify/ocr.py.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Byte-compile everything
+        run: python -m compileall -q fixtures scripts service tests ttbverify report.py
+
+      - name: Generate the regenerable corpora
+        # Each generator audits its own output and exits non-zero if a field it
+        # claims to have printed isn't legible the way its check will read it.
+        run: |
+          python -m fixtures.generate
+          python -m fixtures.boldness
+
+      - name: Audit the committed realistic corpus
+        # Not regenerated (fonts differ per platform), so verify the images in
+        # the repository are the ones the ground truth describes.
+        run: |
+          python -c "
+          import sys
+          from fixtures import audit_corpus, load_realistic_cases
+          problems = audit_corpus(load_realistic_cases())
+          for p in problems:
+              print('::error::' + p)
+          sys.exit(1 if problems else 0)
+          "
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Accuracy and latency gates
+        # Exits non-zero on any gate failure: false approvals, expectation
+        # mismatches, a field reading another field's text, W-4 auto-PASSing a
+        # regular header, or p95 over the 5 s budget (N-01).
+        run: python report.py
+
+      - name: Upload review overlays
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-overlays
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  web:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      # `npm run build` is `tsc --noEmit && vite build`, so this typechecks too.
+      - run: npm run build
+        working-directory: web
+
+  container:
+    name: Container builds and serves
+    runs-on: ubuntu-latest
+    needs: [python, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -f Dockerfile.vercel -t ttbverify:ci .
+
+      - name: Start it on a non-default port
+        # Also proves the $PORT override works, which is how the deploy target
+        # tells the app where to listen. The image defaults to 80 to match
+        # Vercel; this asserts an override is honoured rather than ignored.
+        run: docker run -d --name ttbverify -e PORT=9000 -p 9000:9000 ttbverify:ci
+
+      - name: Wait for health, and check what it reports
+        # A container that starts but has no OCR binary happily returns
+        # UNREADABLE for everything, so assert the engine, not just a 200.
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/api/health > health.json; then break; fi
+            sleep 2
+          done
+          cat health.json
+          grep -q '"status":"ok"' health.json
+          grep -q '"ocr":"available"' health.json
+          # No key in CI, and that is the supported configuration (N-06).
+          grep -q '"ai":"unavailable"' health.json
+
+      - name: Verify a real label end to end
+        # Generated inside the container, which has both Tesseract and the
+        # fixtures, then copied out so curl can post it over HTTP.
+        run: |
+          docker exec ttbverify python -m fixtures.generate
+          docker cp ttbverify:/app/fixtures/images/clean_spirits_front.png ./front.png
+          docker cp ttbverify:/app/fixtures/images/clean_spirits_back.png ./back.png
+          curl -sf -X POST http://127.0.0.1:9000/api/verify \
+            -F 'application={"serial_number":"1","brand_name":"OLD TOM DISTILLERY","class_type":"Kentucky Straight Bourbon Whiskey","commodity":"spirits","alcohol_content":"45% Alc./Vol. (90 Proof)","net_contents":"750 mL","applicant_name":"Old Tom Distillery, LLC"}' \
+            -F "images=@front.png;type=image/png" \
+            -F "images=@back.png;type=image/png" \
+            -F "roles=front" -F "roles=back" > verify.json
+          python -c "
+          import json
+          d = json.load(open('verify.json'))['result']
+          print(d['verdict'], '|', d['summary_line'], '|', d['elapsed_ms'], 'ms')
+          assert d['verdict'] == 'PASS', d
+          "
+
+      - name: Container logs
+        if: always()
+        run: docker logs ttbverify

@@ -1,0 +1,24 @@
+# Keep the build context small and the image free of anything that isn't the app.
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.egg-info
+
+# Built and generated artifacts — the image builds the frontend itself, and the
+# fixture corpora are regenerable (and are not part of the running service).
+web/node_modules
+web/dist
+web/*.tsbuildinfo
+out
+fixtures/images
+fixtures/images_realistic
+fixtures/images_boldness
+
+# Local notes and scratch
+*.zip
+!samples/*.zip
+.env

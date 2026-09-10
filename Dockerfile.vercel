@@ -1,0 +1,91 @@
+# TTB label verification prototype — one image, frontend and API together.
+#
+# **Why the filename.** Vercel detects `Dockerfile.vercel` (or
+# `Containerfile.vercel`) at the project root and routes all traffic to the
+# resulting image — for a single service, no `vercel.json` is needed at all. It
+# is the only name it looks for, so this is that file, and there is deliberately
+# no second copy to drift out of sync. Nothing in here is Vercel-specific: any
+# other host builds it with `-f Dockerfile.vercel`.
+#
+# Two stages: Node builds the React bundle, Python runs the service and serves
+# that bundle as static files. Serving both from one origin is deliberate — it
+# means no CORS story, no second deployment target, and no environment variable
+# telling the frontend where its API lives (N-07: "ships as a container", and
+# the fewer moving parts a prototype has, the more of it a reviewer can check).
+#
+# The OCR engine is a *system binary*, not a Python package (see the rationale at
+# the top of ttbverify/ocr.py), so it has to be installed here. A container that
+# builds but has no `tesseract` on PATH will start happily and return UNREADABLE
+# for every field, which is why CI asserts what /api/health reports rather than
+# just that it returns 200.
+
+# ---- stage 1: the frontend ------------------------------------------------
+FROM node:20-slim AS web
+
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+# `npm run build` is `tsc --noEmit && vite build`, so a type error fails here
+# rather than shipping.
+RUN npm run build
+
+
+# ---- stage 2: the service -------------------------------------------------
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# tesseract-ocr-eng is the language data; without it the binary exists and every
+# read fails. fonts-dejavu-core is for the fixture generators, so a corpus can be
+# regenerated inside the container.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ttbverify/ ./ttbverify/
+COPY service/ ./service/
+COPY fixtures/ ./fixtures/
+COPY report.py ./
+COPY --from=web /web/dist ./web/dist
+
+# No storage of uploaded images or application data beyond the session (N-05):
+# everything is in memory and dies with the process. Nothing to mount, nothing
+# to back up, and nothing to discuss with a retention policy. Running unprivileged
+# is just hygiene — there is no state for a compromise to reach.
+RUN useradd --create-home --uid 10001 ttb && chown -R ttb:ttb /app
+USER ttb
+
+# Vercel routes to port 80 unless the project sets a PORT environment variable,
+# so 80 is the default here too — matching the platform's default means there is
+# no project setting anyone has to remember to configure. PORT is deliberately
+# *not* baked in with ENV, which would shadow a value the platform sets.
+# Locally, map it: `docker run -p 8000:80`.
+EXPOSE 80
+
+# The single-label path has a hard 5 s budget (N-01), so a health check that
+# takes longer than that to notice a wedged process is not much use.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen(f\"http://127.0.0.1:{os.environ.get('PORT','80')}/api/health\", timeout=4).status == 200 else 1)"
+
+# Shell form on purpose: the exec form is a JSON array and does not run a shell,
+# so `$PORT` would reach uvicorn as the literal string "$PORT". `exec` matters as
+# much — it keeps uvicorn as PID 1, so it actually receives the SIGTERM Vercel
+# sends when scaling an idle instance to zero (30 s grace) rather than being
+# killed under a shell that ignored it.
+#
+# One worker, also on purpose. OCR is CPU-bound and already runs behind a
+# bounded thread pool inside the process (service/routes_batch.py); adding
+# uvicorn workers on top would multiply that pool by the worker count and make
+# batch throughput worse, not better. Scale by running more containers.
+CMD exec uvicorn service.app:app --host 0.0.0.0 --port "${PORT:-80}" --workers 1

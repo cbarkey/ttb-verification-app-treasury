@@ -131,9 +131,14 @@ python -m service                     # http://127.0.0.1:8000
 Or the whole thing in one container, which is what gets deployed:
 
 ```bash
-docker build -t ttbverify .
-docker run --rm -p 8000:8000 ttbverify
+docker build -f Dockerfile.vercel -t ttbverify .
+docker run --rm -p 8000:80 ttbverify        # http://127.0.0.1:8000
 ```
+
+The file is named `Dockerfile.vercel` because that is the only name Vercel looks
+for; there is deliberately no second copy to drift out of sync, and nothing in it
+is Vercel-specific. It listens on `$PORT`, defaulting to 80 to match the
+platform, so nothing has to be configured for it to deploy.
 
 One process serves the API and the built React bundle from the same origin — one URL, no
 CORS, nothing to configure. Add `-e ANTHROPIC_API_KEY=...` to enable the AI features.
@@ -160,7 +165,7 @@ CORS, nothing to configure. Add `-e ANTHROPIC_API_KEY=...` to enable the AI feat
 | **Batch** — ZIP + `manifest.csv`, pre-flight reconciliation (F-10), streamed queue, per-row review (F-05) | done |
 | **Realistic fixture corpus** — colour / serif / borders / boxed & rotated warnings / photos | done |
 | **AI: vision fallback, batch brief, drafted notices** — behind one interface, `NullAi` default, cassette-tested | done |
-| **Container** — single image, frontend + API, build- and run-tested | done |
+| **Container** — single image, `$PORT`-aware, health-checked, clean SIGTERM shutdown | built and run-tested |
 | CI | written, not yet run against a remote |
 | Deployment | in progress |
 
@@ -343,7 +348,9 @@ to open, no CORS, no second service to keep in step.
 
 **Target: Vercel**, using container-image support rather than serverless functions. The OCR
 engine is a system binary installed with `apt-get`, which a plain serverless function can't
-provide.
+provide. Vercel auto-detects `Dockerfile.vercel` at the project root and routes all traffic
+to the image, so this needs no `vercel.json` — the only configuration is the API key, set as
+a project environment variable scoped to Production.
 
 **Azure Container Apps was considered and deliberately not used.** It is the natural fit for
 TTB's real infrastructure (Marcus Williams' interview: "we're on Azure now"), and the design
@@ -354,10 +361,11 @@ Azure Container Apps, Render or Fly with no code changes, only different platfor
 
 Known trade-offs, stated rather than discovered:
 
-- **Cold starts.** Idle containers scale to zero, so the first request after a gap pays a
-  cold start. Worth naming explicitly in a project whose central claim is a 5-second budget:
-  N-01 is about per-label processing time, and a cold start is a platform artifact on top of
-  it, not the pipeline being slow.
+- **Cold starts.** Idle instances scale to zero after 5 minutes in production (30 seconds on
+  preview deployments), so the first request after a gap pays a cold start. Worth naming
+  explicitly in a project whose central claim is a 5-second budget: N-01 is about per-label
+  processing time, and a cold start is a platform artifact on top of it, not the pipeline
+  being slow.
 - **No authentication.** This is a standalone prototype with no COLA integration, no accounts
   and no persistence, exactly as scoped. Anyone with the URL can use it — including the AI
   features, which cost money. The deployed instance therefore runs on a capped, disposable
@@ -434,5 +442,5 @@ scripts/
   record_cassettes.py  re-record the cassettes against the live API
 tests/            unit · per-field reading · golden · realistic · boldness · AI · API · batch
 report.py         accuracy + latency for both corpora; renders review-overlay PNGs
-Dockerfile        one image: builds the frontend, installs Tesseract, serves both
+Dockerfile.vercel one image: builds the frontend, installs Tesseract, serves both
 ```

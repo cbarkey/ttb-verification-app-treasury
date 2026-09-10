@@ -1195,7 +1195,7 @@ everything below from scratch.
 | Latency | clean p50/p95 ~458/463 ms · realistic p95 ~721 ms (budget 5000 ms, N-01) |
 | Review rate | 3.3% (reported, not gated) |
 
-**Not built:** CI, container, deployment.
+**Not built:** the deployment itself. CI and the container exist (`Dockerfile.vercel`, `.github/workflows/ci.yml`); neither has run against a remote yet.
 
 ### Decisions and tunables to preserve
 
@@ -1335,7 +1335,7 @@ no socket (the suite itself — `NullAi` is the default everywhere).
 ### Still to do
 
 ~~degradation-set preprocessing~~ **done** (3.9) → ~~wire in the model per 2.9~~ **done** →
-**CI** → **container + deploy**.
+~~CI~~ **written** → ~~container~~ **built and run-tested** → **deploy**.
 
 Known limits still standing, both honest rather than hidden: `r12_lowlight`'s producer line
 FAILs on the deterministic path (blur plus a heavy vignette, not geometry — and the fallback
@@ -1343,8 +1343,32 @@ deliberately doesn't fire on a FAIL, see 2.9 As built), and `r14_wine_angle`'s w
 wording FAILs because OCR truncates words mid-way on the keystoned back label. Neither is a
 false approval; both are a compliant label sent to a human.
 
-Deploy (with the user): frontend likely on **Vercel**, backend container on **Render/Fly**;
-the user is handling the accounts.
+**Deploy: one container to Vercel**, public repo on GitHub, decided with the user.
+
+- `Dockerfile.vercel` is the only build file. That exact name is what Vercel detects at the
+  project root, and a single service needs no `vercel.json` at all. There is deliberately no
+  second copy to drift; nothing in it is Vercel-specific and any other host builds it with
+  `-f Dockerfile.vercel`.
+- **It listens on `$PORT`, defaulting to 80**, because that is Vercel's default — matching it
+  means there is no project setting anyone has to remember. `PORT` is not baked in with `ENV`,
+  which would shadow a platform value. Locally: `docker run -p 8000:80`.
+- The API key is a Vercel project environment variable **scoped to Production only**, so the
+  preview URL created by every push doesn't also carry a live key. The account holds a capped
+  prepaid balance and the key is revoked when the review window closes — spend is bounded by
+  something that cannot be exceeded rather than by a policy. The URL is unauthenticated by
+  design (the brief scopes out auth), so that bound is the control.
+- Azure Container Apps is the natural fit for TTB's real infrastructure and was deliberately
+  not used: deploy-platform choice isn't in the evaluation criteria. The image is portable and
+  the README says so in one line rather than pretending it was tested there.
+
+**Verified locally** against the built image: the `PORT` override is honoured (`-e PORT=9000`),
+the default path with no `PORT` set serves on 80 — which is what Vercel will do — the SPA and
+its built assets are served from the same origin, `HEALTHCHECK` reaches `healthy`, a real
+label verifies `PASS` in ~670 ms over HTTP, and `docker stop` returns in 0 s with
+`Application shutdown complete` in the logs (uvicorn is PID 1 and gets the SIGTERM, which is
+what Vercel sends on scale-to-zero).
+
+**Not yet verified:** CI has never run against a remote.
 
 Web-UI polish deferred: the zoom crop for the full warning block is necessarily small; the
 right pane has whitespace below the image on wide screens; no keyboard nav between review
