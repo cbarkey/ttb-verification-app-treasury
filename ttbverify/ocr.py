@@ -15,6 +15,11 @@ engine swapped in here must preserve those three properties.
 binary any more than it touches the network) and it is the degradation path when
 `tesseract` is not installed: every downstream check becomes UNREADABLE, never a
 silent PASS.
+
+Images are deskewed before recognition (`preprocess.py`) and every box is mapped
+back through that correction here, so everything downstream — rules, the W-4
+crop, the review overlay — keeps working in the coordinates of the image the
+agent actually uploaded.
 """
 
 from __future__ import annotations
@@ -25,9 +30,10 @@ import subprocess
 from dataclasses import dataclass
 from typing import Protocol
 
-from PIL import Image, ImageOps
+from PIL import Image
 
 from ttbverify.models import BoundingBox
+from ttbverify.preprocess import IDENTITY, Correction, prepare
 
 # Word-level confidence floor. Below this a located field is reported UNREADABLE
 # rather than compared (design 2.3 failure table).
@@ -63,6 +69,7 @@ class OcrPage:
     role: str | None = None
     scale: float = 1.0  # image was resized by this factor before OCR
     engine: str = "null"
+    correction: Correction = IDENTITY  # deskew applied before recognition
 
     @property
     def text(self) -> str:
@@ -119,24 +126,14 @@ def _locate_tesseract() -> str | None:
     return None
 
 
-def preprocess(image_path: str) -> tuple[Image.Image, float]:
-    """EXIF-orient, grayscale, autocontrast, upscale small images.
+def preprocess(image_path: str, *, deskew: bool = True
+               ) -> tuple[Image.Image, float, Correction]:
+    """EXIF-orient, grayscale, autocontrast, deskew, upscale small images.
 
-    Returns the prepared image and the scale factor applied (so boxes can be
-    mapped back to original-image coordinates).
+    Returns the prepared image, the upscale factor, and the geometric correction
+    — the last two are how boxes get mapped back to original-image coordinates.
     """
-    img = Image.open(image_path)
-    img = ImageOps.exif_transpose(img)
-    img = img.convert("L")
-    img = ImageOps.autocontrast(img)
-    scale = 1.0
-    if img.width < _OCR_TARGET_WIDTH:
-        scale = _OCR_TARGET_WIDTH / img.width
-        img = img.resize(
-            (round(img.width * scale), round(img.height * scale)),
-            Image.LANCZOS,
-        )
-    return img, scale
+    return prepare(image_path, target_width=_OCR_TARGET_WIDTH, deskew=deskew)
 
 
 class TesseractOcr:
@@ -147,10 +144,12 @@ class TesseractOcr:
     segmentation) suits multi-block label art.
     """
 
-    def __init__(self, cmd: str | None = None, lang: str = "eng", psm: int = 3):
+    def __init__(self, cmd: str | None = None, lang: str = "eng", psm: int = 3,
+                 deskew: bool = True):
         self.cmd = cmd or _locate_tesseract()
         self.lang = lang
         self.psm = psm
+        self.deskew = deskew
         if not self.cmd:
             raise FileNotFoundError(
                 "tesseract binary not found. Install it (see README) or set "
@@ -162,7 +161,7 @@ class TesseractOcr:
         return _locate_tesseract() is not None
 
     def read(self, image_path: str, index: int = 0, role: str | None = None) -> OcrPage:
-        prepared, scale = preprocess(image_path)
+        prepared, scale, correction = preprocess(image_path, deskew=self.deskew)
         tmp = None
         try:
             import tempfile
@@ -185,15 +184,25 @@ class TesseractOcr:
         if proc.returncode != 0:
             raise RuntimeError(f"tesseract failed: {proc.stderr.strip()}")
 
+        width = round(prepared.width / scale)
+        height = round(prepared.height / scale)
         words = _parse_tsv(proc.stdout, scale)
+        if correction.applied:
+            # Boxes come out in deskewed space; the agent sees the original image.
+            words = [
+                OcrWord(w.text, w.conf, correction.map_box(w.box, width, height),
+                        w.line, w.block, w.par)
+                for w in words
+            ]
         return OcrPage(
             words=words,
-            width=round(prepared.width / scale),
-            height=round(prepared.height / scale),
+            width=width,
+            height=height,
             index=index,
             role=role,
             scale=scale,
             engine="tesseract",
+            correction=correction,
         )
 
 

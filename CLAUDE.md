@@ -5,7 +5,7 @@
 implementation guidance and the pitfalls that actually bit, and (4) a build log of what
 exists today and why it is the way it is.
 
-**This is no longer a greenfield repo.** There is a working codebase, 232 passing tests,
+**This is no longer a greenfield repo.** There is a working codebase, 248 passing tests,
 three fixture corpora with per-field ground truth, and a running web app. Section 6 is the
 current state; Sections 3–5 are how to work on it without re-breaking things that have
 already been broken once.
@@ -670,8 +670,8 @@ two things this brief actually cares about.
 
 > **As built:** nothing on the cut list was cut except *property-based tests* and *automated
 > smoke E2E*. Batch shipped in full, including CSV export. Still outstanding from the Phase 1
-> list: the degradation set's **preprocessing** (the fixtures exist, the deskew doesn't), CI,
-> and the container + deployment. The VLM fallback is built behind its interface with the
+> list: CI and the container + deployment. The degradation set's **preprocessing** landed
+> after this was written — see 6 and `ttbverify/preprocess.py`. The VLM fallback is built behind its interface with the
 > no-network path tested, but is not yet wired in — that is the next work (Section 6).
 
 ### 2.8 Trade-offs and assumptions to carry into the README
@@ -889,8 +889,16 @@ display match is admissible only if it
 1. covers at least `_DISPLAY_MIN_COVERAGE` (0.6) of its own line — a brand *is* a line;
    "Old Tom Distillery" inside "Produced by … under license from Old Tom Distillery,
    Bardstown, Kentucky" is three words of a twelve-word sentence — and
-2. isn't fine print (`_FINE_PRINT_FRACTION`, 0.45 of the page's tallest line) — a second,
+2. isn't fine print (`_FINE_PRINT_FRACTION`, 0.30 of the page's tallest line) — a second,
    independent guard.
+
+The second guard is deliberately loose, and the measurement says why: real display lines run
+0.43-0.60 of the tallest line on this corpus and the planted decoys run 0.33-0.38. There is
+no gap between those bands, so height *cannot* be the discriminator — coverage is, and it
+separates the same cases cleanly. The fraction was originally 0.45, sitting inside the
+display band; the class/type line on `r11_whiskey_photo` was one pixel clear of it, and the
+4 px that deskew moved the tallest line was enough to turn a correctly-read compliant field
+into a FAIL. A guard that is not load-bearing should not be tuned tightly enough to fire.
 
 Coverage is the load-bearing signal and it's font-free and layout-free. The result carries a
 status: `matched`, `only_in_fine_print` (FAIL, and the box points at the buried occurrence so
@@ -1020,6 +1028,42 @@ green for days:
 **Don't add a corpus, a fixture, or a check without all four.** `report.py` prints the same
 per-field table, so the evidence is visible without running pytest.
 
+### 3.9 A geometric correction changes more than the picture
+
+Deskew is the one preprocessing step that moves coordinates, and coordinates are load-bearing
+here — `rules._locate_text` reads *line height* as the fine-print test (3.2), and
+`warning.assess_boldness` crops from the box. So the correction has to be undone on the way
+out, and the obvious way to undo it is wrong.
+
+**Map the box's centre and keep its size. Do not map four corners and take the enclosing
+box.** A rotated rectangle isn't a rectangle, and its enclosing box is taller than the
+original by `width * sin(angle)` — which inflates *long* lines much more than short ones. At
+one degree, a 600 px line grows 10 px. That was enough to push a correctly-read class/type
+line past the fine-print cutoff and turn a compliant field into a FAIL, with the *right text*
+in `observed` — the failure looks like a rules bug and is actually a geometry bug several
+modules away. `tests/test_preprocess.py::test_map_box_preserves_glyph_height_for_a_wide_line`
+pins it.
+
+Three more things that are easy to get wrong here, all now covered by tests:
+
+* **The sign.** PIL rotates counter-clockwise for a positive angle, so the correction is the
+  negation of the detected skew. Get it backwards and you double the skew, while still
+  reporting a plausible angle and a *better* profile score than doing nothing on some images.
+* **Warp after the upscale, not before.** Geometrically identical (the keystone parameter is
+  normalized by width), but resampling at 1600 px loses less of the glyph than resampling at
+  1000 px and enlarging the damage. It is the difference between reading `OLD TOM DISTILLERY`
+  and `OLD TOM DISTIELERY`.
+* **Never correct speculatively.** Every candidate is scored against doing nothing and applied
+  only if it clearly wins. Every clean render in both corpora is left untouched, which is what
+  makes it safe to run this on the whole pipeline instead of only on images that look bad.
+
+And the honest limit: a correction that scores better is not necessarily the *true* one, and
+a true one is not necessarily better for OCR. On `r11_whiskey_photo` the estimator recovers
+the applied 2.4 degrees exactly, and Tesseract then reads that label's Copperplate brand
+slightly *worse* than it did crooked — a REVIEW instead of a PASS. That was left alone rather
+than tuned away: REVIEW is the safe direction, and tuning a deskew threshold against one
+font's quirk on one fixture is precisely the overfitting 3.2 already cost this project twice.
+
 ---
 
 ## Section 4 — Environment
@@ -1029,7 +1073,8 @@ Built and verified on **Windows 11, Python 3.13** in `.venv`, **Tesseract 5.4** 
 the binary on `PATH`, via `TESSERACT_CMD`, or at the standard install location on each OS.
 
 ```bash
-python -m venv .venv && .venv\Scriptsctivate     # source .venv/bin/activate elsewhere
+python -m venv .venv
+.venv/Scripts/activate          # source .venv/bin/activate on macOS / Linux
 pip install -r requirements-dev.txt
 cd web && npm install && npm run build && cd ..     # frontend -> web/dist
 ```
@@ -1048,7 +1093,7 @@ cd web && npm install && npm run build && cd ..     # frontend -> web/dist
 python -m fixtures.generate      # clean corpus  -> fixtures/images/ + cases.json
 python -m fixtures.realistic     # realistic corpus (needs system fonts)
 python -m fixtures.boldness      # W-4 calibration corpus
-pytest                           # 232 tests
+pytest                           # 248 tests
 python report.py                 # all gates + the per-field reading table + overlays
 python -m service                # the web app on http://127.0.0.1:8000
 python -m ttbverify --demo brand_mismatch     # single label from the CLI
@@ -1060,7 +1105,7 @@ python -m ttbverify --demo brand_mismatch     # single label from the CLI
 
 | | |
 |---|---|
-| `ttbverify/` | the verification core — pure, no I/O except `ocr.py`. `rules.py` is the field engine, `warning.py` is W-1..W-4, `pipeline.py` orchestrates. |
+| `ttbverify/` | the verification core — pure, no I/O except `ocr.py`. `rules.py` is the field engine, `warning.py` is W-1..W-4, `preprocess.py` is deskew, `pipeline.py` orchestrates. |
 | `service/` | FastAPI. `app.py` (single label + static), `routes_batch.py` + `batch.py` + `manifest.py` (batch). In-memory stores only. |
 | `web/src/screens/` | the three screens. `ReviewScreen` is shared by the single-label and batch paths. |
 | `fixtures/` | the three generators and their committed ground truth. |
@@ -1075,6 +1120,8 @@ python -m ttbverify --demo brand_mismatch     # single label from the CLI
 4. **Never guess which line is which field** (3.2), and never invent `observed` text on a FAIL.
 5. **Every check needs a test that asserts what it read**, not just what it decided (3.8).
 6. **W-4 auto-PASSes or REVIEWs; it never auto-FAILs** (3.4).
+7. **Preprocessing must be reversible.** Anything that moves pixels maps its boxes back to
+   the uploaded image's coordinates, at their original size (3.9).
 
 ---
 
@@ -1091,14 +1138,13 @@ everything below from scratch.
 | Verification core | brand, class/type, ABV, proof, net contents, producer, origin + W-1..W-4 |
 | Interfaces | CLI (`python -m ttbverify`), FastAPI service, React UI (single label **and** batch) |
 | Corpora | clean 17 cases · realistic 16 · W-4 boldness 50 — all with per-field ground truth |
-| Tests | **232**: field-reading 58, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, rules 12, warning 12, manifest 8, batch API 8, API 8, pipeline 7 |
+| Tests | **248**: field-reading 58, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, preprocess 16, rules 12, warning 12, manifest 8, batch API 8, API 8, pipeline 7 |
 | Gates (all green) | 0 false approvals · 0 expectation mismatches · every field reads its own text · warning recall 1.0 · 0 regular headers auto-PASS W-4 |
 | Latency | clean p50/p95 ~458/463 ms · realistic p95 ~721 ms (budget 5000 ms, N-01) |
 | Review rate | 3.3% (reported, not gated) |
 
-**Not built:** degradation preprocessing (deskew / perspective), CI, container, deployment.
-The VLM interface exists but is dormant — 2.9 is the design for wiring it in; "AI / LLM"
-below tracks status.
+**Not built:** CI, container, deployment. The VLM interface exists but is dormant — 2.9 is
+the design for wiring it in; "AI / LLM" below tracks status.
 
 ### Decisions and tunables to preserve
 
@@ -1109,7 +1155,11 @@ below tracks status.
 - **Verdict precedence** (`models._VERDICT_ORDER`): FAIL > UNREADABLE > REVIEW > PASS >
   NOT_DECLARED. `VerificationResult.verdict` is the worst outcome present.
 - **Display admissibility** (`rules`): `_DISPLAY_MIN_COVERAGE = 0.6`, `_FINE_PRINT_FRACTION =
-  0.45`. See 3.2 — do not replace these with a type-size or line-position heuristic.
+  0.30`. See 3.2 — do not replace these with a type-size or line-position heuristic, and note
+  that the fine-print fraction is the *loose* guard on purpose.
+- **Deskew** (`preprocess`): `MAX_ANGLE = 6.0`, `MIN_GAIN = 1.20`, `MIN_ANGLE = 0.2`, joint
+  coarse grid at 240 px then refinement at 480 px. Corrections are scored, never assumed —
+  10 of 31 corpus images get one, every clean render gets none. See 3.9.
 - **Fuzzy tier** `normalize.FUZZY_REVIEW_THRESHOLD = 0.92`; **OCR confidence floor**
   `ocr.MIN_WORD_CONF = 45`; OCR upscales to 1600 px wide before recognition.
 - **W-2 OCR-noise floor** `warning._OCR_NOISE_FLOOR = 0.75`, aligned with
@@ -1154,6 +1204,9 @@ below tracks status.
    review reusing the same split-pane, CSV export. 171 tests.
 6. **Per-field reading tests + display admissibility** (`b61e977`) — the most important
    correction in the project; see 3.2 and 3.8. 232 tests.
+7. **Deskew / keystone preprocessing** — projection-profile estimator, no new dependency.
+   Recovered the `r14_wine_angle` brand (a documented limitation) and the whole warning block
+   on `r16_warn_reworded_photo`; cost ~90 ms per image. 248 tests. See 3.9.
 
 > **Superseded — do not resurrect.** `rules.PROMINENCE = 0.55` (a fraction of the tallest
 > word); then `BRAND_PROMINENCE = 1.8` / `SUBHEAD_PROMINENCE = 0.9` (multiples of the median
@@ -1205,12 +1258,16 @@ protocol, `NullVlm` (the default, used by every test, and the standing proof of 
 
 ### Still to do
 
-Priority order: **degradation-set preprocessing** (deskew / perspective correction — the
-realistic `loose` cases are already the fixtures for it) → **wire in the model per 2.9** → CI
-→ container + deploy. Preprocessing comes first on purpose: it is deterministic, cheap, and
-fixes most of what currently reads as `UNREADABLE`, so the model is measured against the
-residual rather than against a problem we hadn't bothered to solve. Deploy (with the user): frontend likely on **Vercel**, backend container
-on **Render/Fly**; the user is handling the accounts.
+~~degradation-set preprocessing~~ **done** (3.9) → **wire in the model per 2.9** → CI →
+container + deploy. Preprocessing went first on purpose: deterministic, cheap, and it fixed
+most of what was reading as `UNREADABLE`, so the model is now measured against the residual
+rather than against a problem we hadn't bothered to solve. What's left of that residual, and
+it is the model's brief: `r12_lowlight`'s producer line (blur plus a heavy vignette, not
+geometry) and `r14_wine_angle`'s warning wording, which OCR truncates mid-word on the
+keystoned back label.
+
+Deploy (with the user): frontend likely on **Vercel**, backend container on **Render/Fly**;
+the user is handling the accounts.
 
 Web-UI polish deferred: the zoom crop for the full warning block is necessarily small; the
 right pane has whitespace below the image on wide screens; no keyboard nav between review

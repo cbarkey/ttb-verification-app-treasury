@@ -257,8 +257,35 @@ def _realistic_report(engine) -> bool:
         print(f"      - {m}")
     print(f"  latency p95                {p95} ms  ({'PASS' if p95 < 5000 else 'FAIL'})")
     print("  loose-grade cases carry rotation / perspective / low light; a clean field")
-    print("  softening to REVIEW/UNREADABLE there is expected (deskew is Phase 1 work).")
+    print("  softening to REVIEW/UNREADABLE there is expected. Deskew (design 2.9) runs")
+    print("  first and is reported below.")
+    _preprocess_report(engine, cases)
     return not false_appr and not exact_mis and p95 < 5000
+
+
+def _preprocess_report(engine, cases) -> None:
+    """What deskew actually did, per image.
+
+    Worth printing rather than asserting: a correction is only ever justified by
+    what OCR reads afterwards, and "nothing applied" on every clean render is the
+    property that keeps this from being a speculative resample (design 2.9).
+    """
+    print()
+    print("-" * 92)
+    print("  PREPROCESSING  (deskew / keystone — applied only when it scores better)")
+    print("-" * 92)
+    touched = 0
+    for case in cases:
+        app = LabelApplication(**case["application"])
+        for i, ref in enumerate(app.images):
+            corr = engine.read(ref.path, index=i, role=ref.role).correction
+            if not corr.applied:
+                continue
+            touched += 1
+            print(f"  {os.path.basename(ref.path):40s} {corr.describe():34s} "
+                  f"profile x{corr.gain:.1f}")
+    total = sum(len(LabelApplication(**c["application"]).images) for c in cases)
+    print(f"  corrected {touched} of {total} images; the rest scored best untouched.")
 
 
 def _boldness_report(engine) -> bool:

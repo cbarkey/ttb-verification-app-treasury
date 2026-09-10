@@ -52,7 +52,16 @@ from ttbverify.parsers import parse_abv, parse_net_contents
 _DISPLAY_MIN_COVERAGE = 0.6
 # ...and a line shorter than this fraction of the page's tallest line is fine
 # print (a bottler statement, the warning) and never counts as display text.
-_FINE_PRINT_FRACTION = 0.45
+#
+# Measured across both corpora, legitimate display lines run 0.43-0.60 of the
+# tallest line (a class/type line under a big brand is the low end) and the
+# planted decoys sit at 0.33-0.38. There is no gap, so this guard cannot be the
+# one doing the work — coverage is, and it separates the same cases cleanly
+# (3/12 words vs 4/4). Set low enough to stay clear of real display text: at
+# 0.45 the class/type line on `r11_whiskey_photo` was one pixel from being
+# called fine print, and a deskew that moved the tallest line by 4 px was enough
+# to turn a correctly-read, compliant field into a FAIL.
+_FINE_PRINT_FRACTION = 0.30
 
 # ABV numeric bands (design 2.3, 3.5): exact by default, near-miss to REVIEW.
 ABV_EXACT_EPS = 0.05
@@ -222,7 +231,8 @@ def _locate_text(
     if display_only and best_any is not None and best_any.match.outcome in found:
         return Location(
             MatchResult(Outcome.FAIL, "fine_print", best_any.match.similarity,
-                        "appears only in small print, not as the label's display text"),
+                        "appears only inside other text — a bottler statement or "
+                        "fine print — not as the label's own display line"),
             best_any.box, best_any.page_index, best_any.page_role,
             best_any.observed, best_any.mean_conf, status="only_in_fine_print")
 
