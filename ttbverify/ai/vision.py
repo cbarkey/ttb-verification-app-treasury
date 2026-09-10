@@ -114,15 +114,44 @@ def read_fields(client: AiClient, image_path: str, check_ids: list[str], *,
     for item in result.data.get("fields", []):
         name = item.get("name")
         text = (item.get("text") or "").strip()
+        confidence = float(item.get("confidence", 0.0) or 0.0)
         # A null/blank reading is the model saying "not on this image", which is
         # a real answer and must not be turned into a value.
         if name not in wanted or not text:
             continue
+        if not _is_a_reading(text, confidence):
+            continue
         readings.append(Reading(
             check_id=name,
             text=text,
-            confidence=float(item.get("confidence", 0.0) or 0.0),
+            confidence=confidence,
             image_index=image_index,
             model=result.model,
         ))
     return readings, None
+
+
+# Below this the model is not reporting a reading, it is reporting that it
+# couldn't get one. Discarding on low confidence is the safe direction and is
+# not the mirror of promoting on high confidence — there is still no confidence
+# at which a model reading becomes a PASS (CLAUDE.md 2.9).
+_MIN_CONFIDENCE = 0.25
+
+# Sentinels seen in practice. The prompt asks for null when a field can't be
+# read; against a real photograph the model instead returned
+# `{"name": "producer", "text": "<UNKNOWN>", "confidence": 0.1}`. Taken at face
+# value that becomes an agent-facing row reading "the label appears to say
+# <UNKNOWN>", which is worse than saying nothing.
+_NOT_A_READING = {
+    "unknown", "n/a", "na", "none", "null", "not visible", "not legible",
+    "illegible", "unreadable", "not readable", "not present", "not found",
+    "cannot read", "can't read",
+}
+
+
+def _is_a_reading(text: str, confidence: float) -> bool:
+    """Did the model report *what the label says*, or that it couldn't tell?"""
+    if confidence and confidence < _MIN_CONFIDENCE:
+        return False
+    stripped = text.strip().strip("<>[]()").strip().casefold()
+    return stripped not in _NOT_A_READING

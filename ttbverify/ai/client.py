@@ -39,16 +39,64 @@ from typing import Any, Protocol
 # "whatever the SDK defaults to today".
 DEFAULT_MODEL = "claude-sonnet-5"
 
-# Per-call wall clock. Sized against the 2.4 latency table's 2500 ms vision slot,
-# with headroom for the request itself.
+# Per-call wall clock.
 DEFAULT_TIMEOUT_S = 12.0
-VISION_TIMEOUT_S = 3.0
+
+# The design (2.4) reserved 2500 ms for the vision fallback and this was 3.0 to
+# fit inside it. **Measured against the real API, that budget is wrong**: three
+# calls on one label image took 2.4 s, 3.2 s and 6.8 s, so a 3 s timeout fails
+# roughly half the time, and a fallback that usually times out is not a feature.
+#
+# Raised to 10 s with the tension stated rather than hidden: a label that needs
+# this call has *already* blown the interactive budget in the only sense that
+# matters to an agent, because the alternative is bouncing it back to the
+# applicant and waiting days for a new photograph (Jenny Park). N-01's 5 s
+# applies to the normal path, where no model call happens at all — and the
+# pipeline still reports the overrun in `notes` when it occurs.
+VISION_TIMEOUT_S = 10.0
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 
 # Recorded replies the test suite replays. Committed, alongside frozen copies
 # of the images they were recorded against — see scripts/record_cassettes.py.
 CASSETTE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "cassettes"
+
+
+def load_env_file(path: str | os.PathLike[str] = ".env") -> list[str]:
+    """Read `KEY=value` lines from a `.env` file into the environment.
+
+    Returns the names it set — **never the values**, so a caller can log what was
+    configured without printing a key.
+
+    **Call this from a process entrypoint only, never from `create_app()` or
+    library code.** No test in this project may touch the network (N-06, and it
+    is the standing proof of the no-egress path). `create_app()` runs in the test
+    suite, so loading a developer's real key there would silently turn every API
+    test into a live billed call against Anthropic. The seam is deliberate: the
+    app finds a key because `python -m service` put one in the environment, not
+    because importing the app reads files off disk.
+
+    Existing environment variables win, so a real `ANTHROPIC_API_KEY` in the
+    shell is not clobbered by a stale file. Hand-rolled rather than pulling in
+    `python-dotenv`: this is fifteen lines and the dependency surface is
+    something this project argues about on purpose.
+    """
+    file = Path(path)
+    if not file.is_file():
+        return []
+    loaded: list[str] = []
+    for raw in file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip('"').strip("'")
+        if not key or key in os.environ:
+            continue
+        os.environ[key] = value
+        loaded.append(key)
+    return loaded
 
 
 def prompt(name: str, **params: Any) -> str:

@@ -16,7 +16,9 @@ The four gates 2.9 names are pinned across this file and `test_pipeline.py`:
 
 from __future__ import annotations
 
+import importlib
 import json
+import os
 
 import pytest
 
@@ -150,6 +152,84 @@ class TestClients:
         assert "cannot read image" in (result.error or "")
 
 
+class TestDotEnvLoading:
+    """`.env` is read at the process entrypoint only (`service/__main__.py`).
+
+    Never from `create_app()`: the test suite builds the app that way, so a
+    developer's real key would silently turn every API test into a live billed
+    call and break the no-network invariant (N-06). The seam is the point.
+    """
+
+    def test_it_sets_variables_from_the_file(self, tmp_path, monkeypatch):
+        from ttbverify.ai.client import load_env_file
+
+        monkeypatch.delenv("TTB_TEST_TOKEN", raising=False)
+        env = tmp_path / ".env"
+        env.write_text("TTB_TEST_TOKEN=abc123\n", encoding="utf-8")
+
+        assert load_env_file(env) == ["TTB_TEST_TOKEN"]
+        assert os.environ["TTB_TEST_TOKEN"] == "abc123"
+
+    def test_it_returns_names_never_values(self, tmp_path, monkeypatch):
+        """So a caller can log what was configured without printing a secret."""
+        from ttbverify.ai.client import load_env_file
+
+        monkeypatch.delenv("TTB_TEST_TOKEN", raising=False)
+        env = tmp_path / ".env"
+        env.write_text("TTB_TEST_TOKEN=super-secret-value\n", encoding="utf-8")
+
+        assert "super-secret-value" not in str(load_env_file(env))
+
+    def test_an_existing_variable_wins(self, tmp_path, monkeypatch):
+        """A real key in the shell must not be clobbered by a stale file."""
+        from ttbverify.ai.client import load_env_file
+
+        monkeypatch.setenv("TTB_TEST_TOKEN", "from-the-shell")
+        env = tmp_path / ".env"
+        env.write_text("TTB_TEST_TOKEN=from-the-file\n", encoding="utf-8")
+
+        assert load_env_file(env) == []
+        assert os.environ["TTB_TEST_TOKEN"] == "from-the-shell"
+
+    def test_comments_blanks_quotes_and_export_are_handled(self, tmp_path, monkeypatch):
+        from ttbverify.ai.client import load_env_file
+
+        for name in ("TTB_A", "TTB_B", "TTB_C"):
+            monkeypatch.delenv(name, raising=False)
+        env = tmp_path / ".env"
+        env.write_text(
+            '# a comment\n'
+            '\n'
+            'TTB_A="quoted"\n'
+            'export TTB_B=exported\n'
+            'not_a_pair\n'
+            "TTB_C='single'\n",
+            encoding="utf-8",
+        )
+
+        assert sorted(load_env_file(env)) == ["TTB_A", "TTB_B", "TTB_C"]
+        assert os.environ["TTB_A"] == "quoted"
+        assert os.environ["TTB_B"] == "exported"
+        assert os.environ["TTB_C"] == "single"
+
+    def test_a_missing_file_is_not_an_error(self, tmp_path):
+        from ttbverify.ai.client import load_env_file
+
+        assert load_env_file(tmp_path / "nope.env") == []
+
+    def test_creating_the_app_does_not_read_dotenv(self, tmp_path, monkeypatch):
+        """The invariant this whole arrangement exists to protect."""
+        import service
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            "ANTHROPIC_API_KEY=sk-should-never-load\n", encoding="utf-8")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        importlib.reload(service)
+        assert os.environ.get("ANTHROPIC_API_KEY") is None
+
+
 class TestCassettes:
     def _request(self, **kw):
         return AiRequest(kind="vision_fields", prompt="read the brand",
@@ -238,6 +318,50 @@ class TestVisionReadings:
         ai = StubAi({"fields": [{"name": "origin", "text": "Product of France"}]})
         readings, _ = vision.read_fields(ai, "x.png", ["brand"])
         assert readings == []
+
+    def test_a_placeholder_is_not_a_reading(self):
+        """Observed against the live API, not hypothetical.
+
+        The prompt asks for null when a field can't be read. On a genuinely bad
+        photograph the model instead returned
+        `{"name": "producer", "text": "<UNKNOWN>", "confidence": 0.1}`. Taken at
+        face value that becomes a review row telling an agent the label appears
+        to say "<UNKNOWN>", which is worse than the honest "can't read it".
+        """
+        ai = StubAi({"fields": [
+            {"name": "producer", "text": "<UNKNOWN>", "confidence": 0.1}]})
+        readings, _ = vision.read_fields(ai, "x.png", ["producer"])
+        assert readings == []
+
+    @pytest.mark.parametrize("text", ["unknown", "N/A", "not visible", "illegible",
+                                      "[not legible]", "(unreadable)"])
+    def test_other_ways_of_saying_it_could_not_read_it(self, text):
+        ai = StubAi({"fields": [{"name": "brand", "text": text, "confidence": 0.9}]})
+        readings, _ = vision.read_fields(ai, "x.png", ["brand"])
+        assert readings == []
+
+    def test_a_low_confidence_reading_is_discarded(self):
+        """Discarding on low confidence is the safe direction, and it is *not*
+        the mirror of promoting on high confidence — there is still no
+        confidence at which a model reading becomes a PASS (2.9)."""
+        ai = StubAi({"fields": [
+            {"name": "brand", "text": "RUSTY ANCHOR", "confidence": 0.05}]})
+        readings, _ = vision.read_fields(ai, "x.png", ["brand"])
+        assert readings == []
+
+    def test_a_confident_reading_survives(self):
+        ai = StubAi({"fields": [
+            {"name": "brand", "text": "RUSTY ANCHOR", "confidence": 0.98}]})
+        readings, _ = vision.read_fields(ai, "x.png", ["brand"])
+        assert [r.text for r in readings] == ["RUSTY ANCHOR"]
+
+    def test_a_reading_with_no_confidence_reported_is_kept(self):
+        """Absent confidence is not zero confidence — the model simply didn't
+        say. Dropping those would silently discard usable readings."""
+        ai = StubAi({"fields": [{"name": "brand", "text": "RUSTY ANCHOR"}]})
+        readings, _ = vision.read_fields(ai, "x.png", ["brand"])
+        assert [r.text for r in readings] == ["RUSTY ANCHOR"]
+
 
     def test_an_unavailable_client_is_silent_not_an_error(self):
         readings, error = vision.read_fields(NullAi(), "x.png", ["brand"])
