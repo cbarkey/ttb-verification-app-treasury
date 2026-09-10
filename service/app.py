@@ -60,6 +60,12 @@ def create_app() -> FastAPI:
     app.state.ocr = ocr
     app.state.vlm = vlm
 
+    from service.routes_batch import make_batch_router
+
+    batch_router = make_batch_router(ocr=ocr, vlm=vlm)
+    app.include_router(batch_router)
+    app.state.batch_store = batch_router.batch_store
+
     # ---- helpers --------------------------------------------------------
 
     def _image_meta(sid: str, images: list[StoredImage]) -> list[ImageMeta]:
