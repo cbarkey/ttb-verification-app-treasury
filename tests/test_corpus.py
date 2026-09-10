@@ -64,6 +64,24 @@ def test_zero_false_approvals(results):
     assert not offenders, f"false approvals: {offenders}"
 
 
+def test_brand_and_class_do_not_cross_contaminate(results):
+    """Every check must point at its *own* text — the brand box must not be the
+    class/type line and vice versa. Outcome gates alone don't catch this."""
+    bad = []
+    for case_id, (_case, result) in results.items():
+        by_id = {c.check_id: c for c in result.checks}
+        brand, cls = by_id.get("brand"), by_id.get("class_type")
+        if not (brand and cls and brand.box and cls.box):
+            continue
+        bo, co = (brand.observed or "").strip(), (cls.observed or "").strip()
+        if bo and co and bo == co:
+            bad.append(f"{case_id}: brand and class both read {bo!r}")
+        elif (abs(brand.box.top - cls.box.top) < 6
+              and abs(brand.box.height - cls.box.height) < 6):
+            bad.append(f"{case_id}: brand box coincides with the class box")
+    assert not bad, "\n".join(bad)
+
+
 def test_warning_recall_on_mutation_set(results):
     """Every warning-statement defect fixture must be caught (recall 1.0)."""
     defects = {

@@ -48,6 +48,54 @@ class TestProminenceFilter:
         assert checks["class_type"].outcome is Outcome.PASS
 
 
+class TestBrandClassSeparation:
+    """Regression: the brand and class/type checks must not read each other's
+    text — even when the display face makes the brand line measure *shorter*
+    than the class line (Copperplate-style short caps)."""
+
+    def _page(self, brand_h: int, class_h: int):
+        from ttbverify.models import BoundingBox
+        from ttbverify.ocr import OcrPage, OcrWord
+
+        words: list = []
+        y = 40
+        for line_no, (text, h) in enumerate(
+            [("IRONWOOD RESERVE", brand_h),
+             ("Kentucky Straight Bourbon Whiskey", class_h),
+             ("40% Alc./Vol. (80 Proof)", 18),
+             ("Distilled by Old Tom Distillery, Bardstown KY", 9)],
+            start=1,
+        ):
+            x = 40
+            for tok in text.split():
+                words.append(OcrWord(tok, 95.0,
+                                     BoundingBox(x, y, 12 * len(tok), h),
+                                     line=line_no, block=1, par=1))
+                x += 12 * len(tok) + 8
+            y += h + 20
+        return OcrPage(words=words, width=x + 40, height=y, index=0,
+                       role="front", engine="fake")
+
+    def test_brand_check_does_not_return_the_class_line(self):
+        # class line is the tallest thing on the label
+        page = self._page(brand_h=22, class_h=34)
+        app = _app(brand_name="OLD TOM DISTILLERY",
+                   class_type="Kentucky Straight Bourbon Whiskey")
+        checks = _by_id(evaluate(app, [page]))
+        assert checks["brand"].outcome is Outcome.FAIL
+        assert "Kentucky" not in (checks["brand"].observed or "")
+        assert checks["class_type"].outcome is Outcome.PASS
+
+    def test_class_check_does_not_return_the_brand_line(self):
+        page = self._page(brand_h=48, class_h=30)
+        app = _app(brand_name="IRONWOOD RESERVE",
+                   class_type="Kentucky Straight Bourbon Whiskey")
+        checks = _by_id(evaluate(app, [page]))
+        assert checks["brand"].outcome is Outcome.PASS
+        assert checks["class_type"].outcome is Outcome.PASS
+        assert "IRONWOOD" not in (checks["class_type"].observed or "")
+
+
 class TestNumericFields:
     def test_abv_exact(self):
         page = make_page("OLD TOM DISTILLERY\nKentucky Straight Bourbon Whiskey\n"

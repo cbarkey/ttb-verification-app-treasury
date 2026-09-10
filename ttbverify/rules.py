@@ -5,13 +5,14 @@ here — that keeps it fast (design 6.1: ~20 ms) and trivially testable.
 
 Two design points enforced here:
 
-  * **Prominence filter (design 3.2).** Brand and class/type are display type.
-    Matching them against *any* text on the label produces false approvals: a
-    label's fine-print bottler statement can contain a string that fuzzy-matches
-    the declared brand even when the actual, prominent brand is something else.
-    So brand/class matching only considers words at least `PROMINENCE` of the
-    tallest word on the page. Producer/origin are *expected* in fine print and
-    are matched without the filter.
+  * **Prominence + tiering (design 3.2).** Brand and class/type are display text.
+    Matching them against *any* text on the label produces false approvals — a
+    fine-print bottler statement can contain the declared brand while the real,
+    prominent brand is something else. So genuine fine print is dropped by
+    height, and the remaining lines are tiered by *position*: the first line
+    block is the brand, everything below it is the class/type tier. The brand
+    check only ever sees the brand block. Producer/origin are *expected* in fine
+    print and are matched against all text.
 
   * **Governing principle.** A field that couldn't be read is UNREADABLE; a field
     with no declared value is NOT_DECLARED. Neither is ever a silent PASS.
@@ -20,7 +21,7 @@ Two design points enforced here:
 from __future__ import annotations
 
 import re
-import statistics
+
 from dataclasses import dataclass
 
 from ttbverify.models import (
@@ -33,19 +34,23 @@ from ttbverify.normalize import MatchResult, compare
 from ttbverify.ocr import MIN_WORD_CONF, OcrPage, OcrWord
 from ttbverify.parsers import parse_abv, parse_net_contents
 
-# Prominence filter (design 3.2), expressed as a multiple of the page's *median*
-# word height rather than a fraction of the single tallest word — the latter was
-# overfit to the clean corpus and excluded legitimate class/type text on real
-# labels, where the brand is 2-3x the size of everything else.
+# Prominence + tiering (design 3.2).
 #
-#   BRAND_PROMINENCE  — the brand is the biggest thing on the label; a fine-print
-#                       bottler line that happens to contain the declared brand
-#                       string must not clear this bar.
-#   SUBHEAD_PROMINENCE — class/type is a sub-headline: bigger than body/fine
-#                        print, but not display-sized. Just needs to beat the
-#                        fine print.
-BRAND_PROMINENCE = 1.8
-SUBHEAD_PROMINENCE = 0.9
+# Brand and class/type are display text; a fine-print bottler line that happens
+# to contain the declared brand must not be accepted as the brand. Earlier
+# versions thresholded on OCR bounding-box height as a proxy for type size — but
+# that is font-fragile (Copperplate-style faces render short caps, so a big
+# display brand can measure a *smaller* box than a smaller-point class line).
+#
+# Instead we tier by *position*: drop genuine fine print by height, then in
+# reading order the first surviving line block is the brand and everything below
+# it is the class/type tier. The brand check only ever sees the brand block, so
+# it structurally cannot match (or point at) the class line, and a fine-print
+# occurrence of the declared brand still can't clear the fine-print cutoff.
+
+# A line shorter than this fraction of the page's tallest line is fine print
+# (a bottler statement, the warning) and never counts as brand or class/type.
+_FINE_PRINT_FRACTION = 0.45
 
 # ABV numeric bands (design 2.3, 3.5): exact by default, near-miss to REVIEW.
 ABV_EXACT_EPS = 0.05
@@ -95,95 +100,76 @@ class Location:
     mean_conf: float
 
 
-def _line_window(line: list[OcrWord], want: int) -> list[OcrWord]:
-    return line[: want + 2] if len(line) > want + 2 else line
+def _line_h(line: list[OcrWord]) -> int:
+    return max(w.box.height for w in line)
 
 
-def _blocks(lines: list[list[OcrWord]]) -> list[list[OcrWord]]:
-    """Group vertically-adjacent lines so a value wrapped across two lines
-    (a long brand name, an address) can still be matched as one run.
+def _prominent_lines(page: OcrPage) -> list[list[OcrWord]]:
+    """The page's lines in reading order with genuine fine print dropped."""
+    lines = [ln for ln in _iter_lines(page.words) if ln]
+    if len(lines) < 2:
+        return lines
+    cutoff = _FINE_PRINT_FRACTION * max(_line_h(ln) for ln in lines)
+    return [ln for ln in lines if _line_h(ln) >= cutoff]
 
-    Only merges lines of *similar* height — a wrapped brand's two lines are the
-    same size; a brand followed by a smaller class/type line is not, and must
-    stay separate so its box doesn't swallow the subhead.
+
+def _tier_groups(page: OcrPage, tier: str, want: int) -> list[list[OcrWord]]:
+    """Word groups on `page` to window-search for a display field.
+
+    tier == "brand"   -> the first prominent line; if the declared brand has more
+                         words than that line holds it likely wrapped, so also
+                         fold in the next line — but only if the two together
+                         don't overshoot the declared length (that guards against
+                         folding a fanciful-name or class line into the brand).
+    tier == "subhead" -> each prominent line *below* the first, on its own.
     """
-    out: list[list[OcrWord]] = []
-    for line in lines:
-        if not line:
-            continue
-        top = min(w.box.top for w in line)
-        h = max(w.box.height for w in line)
-        if out:
-            prev = out[-1]
-            prev_bottom = max(w.box.bottom for w in prev)
-            prev_h = max(w.box.height for w in prev)
-            close = 0 <= top - prev_bottom <= 0.9 * h
-            similar = abs(h - prev_h) <= 0.25 * max(h, prev_h)
-            if close and similar:
-                out[-1].extend(line)
-                continue
-        out.append(list(line))
-    return out
-
-
-def _prominence_threshold(page: OcrPage, factor: float | None) -> float:
-    """Minimum word height to count as prominent on this page.
-
-    `factor` is a multiple of the median word height; `None` means no filter.
-    Capped below the tallest word so the display line itself always qualifies,
-    and disabled on very sparse pages (nothing to filter there).
-    """
-    if factor is None or len(page.words) < 5:
-        return 0.0
-    heights = sorted(w.box.height for w in page.words)
-    median = statistics.median(heights)
-    return min(median * factor, 0.85 * heights[-1])
+    plines = _prominent_lines(page)
+    if not plines:
+        return []
+    if tier == "brand":
+        block = list(plines[0])
+        if (len(plines) > 1 and len(plines[0]) < want
+                and len(plines[0]) + len(plines[1]) <= want + 1):
+            block += plines[1]
+        return [block]
+    return [list(ln) for ln in plines[1:]]
 
 
 def _locate_text(
-    pages: list[OcrPage], declared: str, *, prominence: float | None
+    pages: list[OcrPage], declared: str, *, tier: str | None
 ) -> Location | None:
     """Best matching window of consecutive words for `declared`.
 
-    Returns None when there is no candidate text at all (→ UNREADABLE upstream).
+    `tier` restricts the search to a display region ("brand" / "subhead"); `None`
+    searches all text (producer, origin — expected in fine print). Returns None
+    when there is no candidate text at all (→ UNREADABLE upstream).
 
-    On a FAIL for a prominence-filtered field, the highest-*similarity* fragment
-    is usually noise (a stray word in fine print or the warning block). What the
-    agent needs to see is the text that is actually printed prominently — so the
-    box/observed fall back to the most prominent candidate line, while the
-    outcome stays FAIL.
+    On a FAIL for a tiered field the best window is often a stray fragment; the
+    box/observed then fall back to the tier's own region so the agent sees the
+    text that was actually compared, with the outcome unchanged.
     """
     want = max(1, len(declared.split()))
     best: Location | None = None
-    prominent: tuple[int, int, Location] | None = None  # (height, -top, loc)
-    filtered = prominence is not None
+    fallback: tuple[int, str | None, BoundingBox, str] | None = None
 
     for page in pages:
         if not page.words:
             continue
-        threshold = _prominence_threshold(page, prominence)
-        prom_lines = [[w for w in ln if w.box.height >= threshold]
-                      for ln in _iter_lines(page.words)]
-        for cand in _blocks([ln for ln in prom_lines if ln]):
-            if not cand:
-                continue
+        groups = (list(_iter_lines(page.words)) if tier is None
+                  else _tier_groups(page, tier, want))
+        if not groups or not any(groups):
+            continue
+        if tier is not None and fallback is None:
+            flat = [w for g in groups for w in g]
+            if flat:
+                fallback = (page.index, page.role,
+                            BoundingBox.enclosing(w.box for w in flat),
+                            " ".join(w.text for w in flat))
 
-            if filtered:
-                head = _line_window(cand, want)
-                text = " ".join(w.text for w in head)
-                loc = Location(
-                    match=compare(declared, text),
-                    box=BoundingBox.enclosing(w.box for w in head),
-                    page_index=page.index, page_role=page.role, observed=text,
-                    mean_conf=sum(w.conf for w in head) / len(head),
-                )
-                key = (max(w.box.height for w in head), -min(w.box.top for w in head))
-                if prominent is None or key > prominent[:2]:
-                    prominent = (*key, loc)
-
-            for start in range(len(cand)):
-                for length in range(1, min(want + 1, len(cand) - start) + 1):
-                    window = cand[start : start + length]
+        for group in groups:
+            for start in range(len(group)):
+                for length in range(1, min(want + 1, len(group) - start) + 1):
+                    window = group[start : start + length]
                     text = " ".join(w.text for w in window)
                     m = compare(declared, text)
                     if best is None or _rank(m) > _rank(best.match):
@@ -197,10 +183,9 @@ def _locate_text(
 
     if best is None:
         return None
-    if best.match.outcome is Outcome.FAIL and prominent is not None:
-        keep = prominent[2]
-        return Location(best.match, keep.box, keep.page_index, keep.page_role,
-                        keep.observed, keep.mean_conf)
+    if best.match.outcome is Outcome.FAIL and fallback is not None:
+        pi, pr, box, text = fallback
+        return Location(best.match, box, pi, pr, text, best.mean_conf)
     return best
 
 
@@ -237,15 +222,15 @@ def _text_field_check(
     declared: str | None,
     pages: list[OcrPage],
     *,
-    prominence: float | None,
+    tier: str | None,
 ) -> CheckResult:
     if declared is None or not declared.strip():
         return CheckResult(check_id, label, Outcome.NOT_DECLARED,
                            detail="No value declared on the application.")
 
-    loc = _locate_text(pages, declared, prominence=prominence)
+    loc = _locate_text(pages, declared, tier=tier)
     if loc is None:
-        where = "in prominent text" if prominence is not None else "anywhere on the label"
+        where = "in the display text" if tier is not None else "anywhere on the label"
         return CheckResult(check_id, label, Outcome.UNREADABLE, declared=declared,
                            detail=f"Couldn't read text to compare {where}.")
 
@@ -396,18 +381,18 @@ def evaluate(
 
     checks: list[CheckResult] = [
         _text_field_check("brand", "Brand name", app.brand_name, pages,
-                          prominence=BRAND_PROMINENCE),
+                          tier="brand"),
         _text_field_check("class_type", "Class / type", app.class_type, pages,
-                          prominence=SUBHEAD_PROMINENCE),
+                          tier="subhead"),
     ]
     checks.extend(_abv_check(app, pages))
     checks.append(_net_contents_check(app, pages))
     checks.append(
         _text_field_check("producer", "Producer name", app.applicant_name, pages,
-                          prominence=None)
+                          tier=None)
     )
     checks.append(
         _text_field_check("origin", "Country of origin", app.origin, pages,
-                          prominence=None)
+                          tier=None)
     )
     return checks
