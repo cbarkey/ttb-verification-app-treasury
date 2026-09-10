@@ -5,14 +5,13 @@ here — that keeps it fast (design 6.1: ~20 ms) and trivially testable.
 
 Two design points enforced here:
 
-  * **Prominence + tiering (design 3.2).** Brand and class/type are display text.
-    Matching them against *any* text on the label produces false approvals — a
-    fine-print bottler statement can contain the declared brand while the real,
-    prominent brand is something else. So genuine fine print is dropped by
-    height, and the remaining lines are tiered by *position*: the first line
-    block is the brand, everything below it is the class/type tier. The brand
-    check only ever sees the brand block. Producer/origin are *expected* in fine
-    print and are matched against all text.
+  * **Display admissibility (design 3.2).** Brand and class/type are display
+    text. Matching them against *any* text on the label produces false
+    approvals — a fine-print bottler statement can contain the declared brand
+    while the real, prominent brand is something else. So a display match must
+    be (most of) its own line rather than a fragment inside a longer sentence,
+    and must not be fine print. Producer/origin are *expected* in fine print and
+    are matched against all text.
 
   * **Governing principle.** A field that couldn't be read is UNREADABLE; a field
     with no declared value is NOT_DECLARED. Neither is ever a silent PASS.
@@ -30,26 +29,29 @@ from ttbverify.models import (
     LabelApplication,
     Outcome,
 )
-from ttbverify.normalize import MatchResult, compare
+from ttbverify.normalize import MatchResult, compare, similarity
 from ttbverify.ocr import MIN_WORD_CONF, OcrPage, OcrWord
 from ttbverify.parsers import parse_abv, parse_net_contents
 
-# Prominence + tiering (design 3.2).
+# Display admissibility (design 3.2).
 #
-# Brand and class/type are display text; a fine-print bottler line that happens
-# to contain the declared brand must not be accepted as the brand. Earlier
-# versions thresholded on OCR bounding-box height as a proxy for type size — but
-# that is font-fragile (Copperplate-style faces render short caps, so a big
-# display brand can measure a *smaller* box than a smaller-point class line).
+# Earlier versions guessed which *line* was the brand — by OCR bounding-box
+# height, then by reading position. Both are wrong: box height is font-dependent
+# (Copperplate-style faces render short caps, so a large display brand can
+# measure a smaller box than a smaller-point class line) and position assumes a
+# layout. Neither is something a compliance tool should bet on.
 #
-# Instead we tier by *position*: drop genuine fine print by height, then in
-# reading order the first surviving line block is the brand and everything below
-# it is the class/type tier. The brand check only ever sees the brand block, so
-# it structurally cannot match (or point at) the class line, and a fine-print
-# occurrence of the declared brand still can't clear the fine-print cutoff.
+# What actually distinguishes a real brand occurrence from the decoy in a
+# bottler statement is *how the match sits in its line*: a brand is (most of) a
+# line of its own; "Old Tom Distillery" inside "Distilled by Old Tom Distillery,
+# Bardstown, KY" is three words of a twelve-word sentence. That signal is
+# font-free and layout-free. Fine print is a second, independent guard.
 
-# A line shorter than this fraction of the page's tallest line is fine print
-# (a bottler statement, the warning) and never counts as brand or class/type.
+# A display match must be (most of) its own line — a declared brand found as a
+# fragment inside a longer sentence is a bottler statement, not a brand.
+_DISPLAY_MIN_COVERAGE = 0.6
+# ...and a line shorter than this fraction of the page's tallest line is fine
+# print (a bottler statement, the warning) and never counts as display text.
 _FINE_PRINT_FRACTION = 0.45
 
 # ABV numeric bands (design 2.3, 3.5): exact by default, near-miss to REVIEW.
@@ -85,9 +87,21 @@ def _iter_lines(words: list[OcrWord]):
         yield bucket
 
 
-def _rank(m: MatchResult) -> tuple[int, float]:
-    order = {Outcome.PASS: 3, Outcome.REVIEW: 2, Outcome.FAIL: 1}
-    return (order[m.outcome], m.similarity)
+_OUTCOME_ORDER = {Outcome.PASS: 3, Outcome.REVIEW: 2, Outcome.FAIL: 1}
+
+
+def _rank(m: MatchResult, declared: str = "", observed: str = "") -> tuple[float, ...]:
+    """Order candidate matches: outcome first, then how well they matched.
+
+    The last key is *literal* similarity, before normalization. It only breaks
+    ties — when the same value appears twice and both normalize to a match, take
+    the more literal one. On a label whose distillery is also its brand, that
+    points the producer check at "Old Tom Distillery, LLC" in the bottler
+    statement rather than at "OLD TOM DISTILLERY" in the display type, which is
+    the occurrence an agent actually wants boxed.
+    """
+    literal = similarity(declared.casefold(), observed.casefold()) if declared else 0.0
+    return (_OUTCOME_ORDER[m.outcome], m.similarity, literal)
 
 
 @dataclass
@@ -96,97 +110,128 @@ class Location:
     box: BoundingBox | None
     page_index: int
     page_role: str | None
-    observed: str
+    observed: str | None
     mean_conf: float
+    status: str = "matched"   # matched | only_in_fine_print | not_found
 
 
 def _line_h(line: list[OcrWord]) -> int:
     return max(w.box.height for w in line)
 
 
-def _prominent_lines(page: OcrPage) -> list[list[OcrWord]]:
-    """The page's lines in reading order with genuine fine print dropped."""
-    lines = [ln for ln in _iter_lines(page.words) if ln]
+def _page_lines(page: OcrPage) -> list[list[OcrWord]]:
+    return [ln for ln in _iter_lines(page.words) if ln]
+
+
+def _fine_print_cutoff(lines: list[list[OcrWord]]) -> float:
+    """Height below which a line counts as fine print on this page."""
     if len(lines) < 2:
-        return lines
-    cutoff = _FINE_PRINT_FRACTION * max(_line_h(ln) for ln in lines)
-    return [ln for ln in lines if _line_h(ln) >= cutoff]
+        return 0.0
+    return _FINE_PRINT_FRACTION * max(_line_h(ln) for ln in lines)
 
 
-def _tier_groups(page: OcrPage, tier: str, want: int) -> list[list[OcrWord]]:
-    """Word groups on `page` to window-search for a display field.
+def _windows(lines: list[list[OcrWord]], want: int):
+    """Every candidate run of consecutive words as (words, line_word_count,
+    line_height). Includes runs that span one line break, so a brand wrapped
+    onto a second line is still matchable as a whole.
 
-    tier == "brand"   -> the first prominent line; if the declared brand has more
-                         words than that line holds it likely wrapped, so also
-                         fold in the next line — but only if the two together
-                         don't overshoot the declared length (that guards against
-                         folding a fanciful-name or class line into the brand).
-    tier == "subhead" -> each prominent line *below* the first, on its own.
+    `line_height` is the height of the *line*, not of the words in the window —
+    a word with no ascender or descender ("Gin") measures short and would
+    otherwise drag its whole line below the fine-print cutoff.
     """
-    plines = _prominent_lines(page)
-    if not plines:
-        return []
-    if tier == "brand":
-        block = list(plines[0])
-        if (len(plines) > 1 and len(plines[0]) < want
-                and len(plines[0]) + len(plines[1]) <= want + 1):
-            block += plines[1]
-        return [block]
-    return [list(ln) for ln in plines[1:]]
+    for i, line in enumerate(lines):
+        h = _line_h(line)
+        for start in range(len(line)):
+            for length in range(1, min(want + 1, len(line) - start) + 1):
+                yield line[start : start + length], len(line), h
+        if i + 1 < len(lines) and len(line) < want:
+            nxt = lines[i + 1]
+            both = max(h, _line_h(nxt))
+            for take in range(1, min(want - len(line) + 1, len(nxt)) + 1):
+                yield line + nxt[:take], len(line) + len(nxt), both
 
 
 def _locate_text(
-    pages: list[OcrPage], declared: str, *, tier: str | None
+    pages: list[OcrPage], declared: str, *, display_only: bool
 ) -> Location | None:
-    """Best matching window of consecutive words for `declared`.
+    """Find `declared` on the label.
 
-    `tier` restricts the search to a display region ("brand" / "subhead"); `None`
-    searches all text (producer, origin — expected in fine print). Returns None
-    when there is no candidate text at all (→ UNREADABLE upstream).
+    Every run of consecutive words on every page is a candidate. For a *display*
+    field (brand, class/type) a candidate is only admissible if it is
 
-    On a FAIL for a tiered field the best window is often a stray fragment; the
-    box/observed then fall back to the tier's own region so the agent sees the
-    text that was actually compared, with the outcome unchanged.
+      * (most of) its own line rather than a fragment buried inside a longer
+        sentence, and
+      * not fine print.
+
+    That pair is the real content of design 3.2's bottler-statement false
+    approval — and unlike anything based on type size it doesn't depend on the
+    font or on where the label happens to put things.
+
+    Returns None only when there is no text at all (→ UNREADABLE upstream). A
+    returned Location carries a `status`:
+
+      matched             the declared value is on the label (see `match`)
+      only_in_fine_print  it *is* there, but buried — boxed so the agent can see
+      not_found           it isn't on the label; `observed` is None, never a guess
     """
     want = max(1, len(declared.split()))
-    best: Location | None = None
-    fallback: tuple[int, str | None, BoundingBox, str] | None = None
+    best_adm: Location | None = None
+    best_any: Location | None = None
+    display_region: tuple[int, str | None, BoundingBox] | None = None
+    saw_text = False
 
     for page in pages:
-        if not page.words:
+        lines = _page_lines(page)
+        if not lines:
             continue
-        groups = (list(_iter_lines(page.words)) if tier is None
-                  else _tier_groups(page, tier, want))
-        if not groups or not any(groups):
-            continue
-        if tier is not None and fallback is None:
-            flat = [w for g in groups for w in g]
-            if flat:
-                fallback = (page.index, page.role,
-                            BoundingBox.enclosing(w.box for w in flat),
-                            " ".join(w.text for w in flat))
+        saw_text = True
+        cutoff = _fine_print_cutoff(lines) if display_only else 0.0
 
-        for group in groups:
-            for start in range(len(group)):
-                for length in range(1, min(want + 1, len(group) - start) + 1):
-                    window = group[start : start + length]
-                    text = " ".join(w.text for w in window)
-                    m = compare(declared, text)
-                    if best is None or _rank(m) > _rank(best.match):
-                        best = Location(
-                            match=m,
-                            box=BoundingBox.enclosing(w.box for w in window),
-                            page_index=page.index, page_role=page.role,
-                            observed=text,
-                            mean_conf=sum(w.conf for w in window) / len(window),
-                        )
+        if display_only and display_region is None:
+            shown = [w for ln in lines if _line_h(ln) >= cutoff for w in ln]
+            if shown:
+                display_region = (page.index, page.role,
+                                  BoundingBox.enclosing(w.box for w in shown))
 
-    if best is None:
+        for window, line_size, line_height in _windows(lines, want):
+            text = " ".join(w.text for w in window)
+            m = compare(declared, text)
+            loc = Location(m, BoundingBox.enclosing(w.box for w in window),
+                           page.index, page.role, text,
+                           sum(w.conf for w in window) / len(window))
+            key = _rank(m, declared, text)
+            if best_any is None or key > _rank(best_any.match, declared,
+                                               best_any.observed or ""):
+                best_any = loc
+            if display_only:
+                covers_line = len(window) / line_size >= _DISPLAY_MIN_COVERAGE
+                is_display = line_height >= cutoff
+                if not (covers_line and is_display):
+                    continue
+            if best_adm is None or key > _rank(best_adm.match, declared,
+                                               best_adm.observed or ""):
+                best_adm = loc
+
+    if not saw_text:
         return None
-    if best.match.outcome is Outcome.FAIL and fallback is not None:
-        pi, pr, box, text = fallback
-        return Location(best.match, box, pi, pr, text, best.mean_conf)
-    return best
+
+    found = (Outcome.PASS, Outcome.REVIEW)
+    if best_adm is not None and best_adm.match.outcome in found:
+        return best_adm
+
+    if display_only and best_any is not None and best_any.match.outcome in found:
+        return Location(
+            MatchResult(Outcome.FAIL, "fine_print", best_any.match.similarity,
+                        "appears only in small print, not as the label's display text"),
+            best_any.box, best_any.page_index, best_any.page_role,
+            best_any.observed, best_any.mean_conf, status="only_in_fine_print")
+
+    box = pi = pr = None
+    if display_region is not None:
+        pi, pr, box = display_region
+    return Location(
+        MatchResult(Outcome.FAIL, "mismatch", 0.0, "not found on the label"),
+        box, pi if pi is not None else 0, pr, None, 0.0, status="not_found")
 
 
 def _locate_pattern(
@@ -222,30 +267,47 @@ def _text_field_check(
     declared: str | None,
     pages: list[OcrPage],
     *,
-    tier: str | None,
+    display_only: bool,
 ) -> CheckResult:
     if declared is None or not declared.strip():
         return CheckResult(check_id, label, Outcome.NOT_DECLARED,
                            detail="No value declared on the application.")
 
-    loc = _locate_text(pages, declared, tier=tier)
+    loc = _locate_text(pages, declared, display_only=display_only)
     if loc is None:
-        where = "in the display text" if tier is not None else "anywhere on the label"
         return CheckResult(check_id, label, Outcome.UNREADABLE, declared=declared,
-                           detail=f"Couldn't read text to compare {where}.")
+                           detail="Nothing readable on the submitted image(s).")
+
+    common = dict(declared=declared, box=loc.box,
+                  image_index=loc.page_index, image_role=loc.page_role)
+
+    if loc.status == "not_found":
+        # No guessing: we don't claim to know what the label calls this field,
+        # only that the declared value isn't there.
+        where = "display text" if display_only else "text"
+        return CheckResult(check_id, label, Outcome.FAIL, observed=None,
+                           detail=f"Not found in the label's {where}.",
+                           evidence={"match": "not_found"}, **common)
+
+    if loc.status == "only_in_fine_print":
+        return CheckResult(
+            check_id, label, Outcome.FAIL, observed=loc.observed, tier="fine_print",
+            detail=("Found only in small print, not as the label's display text "
+                    "— the prominent text is something else."),
+            evidence={"match": "only_in_fine_print",
+                      "similarity": round(loc.match.similarity, 3)},
+            **common)
 
     if loc.match.outcome is not Outcome.PASS and loc.mean_conf < MIN_WORD_CONF:
-        return CheckResult(check_id, label, Outcome.UNREADABLE, declared=declared,
-                           observed=loc.observed, box=loc.box,
-                           image_index=loc.page_index, image_role=loc.page_role,
-                           detail="Matching text was read with low confidence.")
+        return CheckResult(check_id, label, Outcome.UNREADABLE, observed=loc.observed,
+                           detail="Matching text was read with low confidence.",
+                           evidence={"match": "low_confidence"}, **common)
 
     return CheckResult(
         check_id, label, loc.match.outcome,
-        declared=declared, observed=loc.observed, tier=loc.match.tier,
-        box=loc.box, image_index=loc.page_index, image_role=loc.page_role,
-        detail=loc.match.detail,
-        evidence={"similarity": round(loc.match.similarity, 3)},
+        observed=loc.observed, tier=loc.match.tier, detail=loc.match.detail,
+        evidence={"match": "matched", "similarity": round(loc.match.similarity, 3)},
+        **common,
     )
 
 
@@ -381,18 +443,18 @@ def evaluate(
 
     checks: list[CheckResult] = [
         _text_field_check("brand", "Brand name", app.brand_name, pages,
-                          tier="brand"),
+                          display_only=True),
         _text_field_check("class_type", "Class / type", app.class_type, pages,
-                          tier="subhead"),
+                          display_only=True),
     ]
     checks.extend(_abv_check(app, pages))
     checks.append(_net_contents_check(app, pages))
     checks.append(
         _text_field_check("producer", "Producer name", app.applicant_name, pages,
-                          tier=None)
+                          display_only=False)
     )
     checks.append(
         _text_field_check("origin", "Country of origin", app.origin, pages,
-                          tier=None)
+                          display_only=False)
     )
     return checks

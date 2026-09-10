@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageDraw, ImageFont
 
-from fixtures import CASES_JSON, IMAGES_DIR, REPO_ROOT
+from fixtures import CASES_JSON, IMAGES_DIR, REPO_ROOT, audit_corpus
 from ttbverify.warning import REFERENCE_WARNING
 
 W, H = 1000, 1360
@@ -54,9 +54,22 @@ class Sheet:
         self.draw = ImageDraw.Draw(self.img)
         self.y = MARGIN
 
-    def centered(self, text: str, font: ImageFont.FreeTypeFont, gap: int = 24) -> None:
+    def centered(self, text: str, font: ImageFont.FreeTypeFont, gap: int = 24,
+                 bold: bool = False) -> None:
+        """Centred, shrunk to fit if it would run past the margins.
+
+        Text drawn off the edge of a label is unreadable to OCR and to a person;
+        the generator must never emit it.
+        """
+        size = font.size
+        while size > 10:
+            bbox = self.draw.textbbox((0, 0), text, font=font)
+            if (bbox[2] - bbox[0]) <= W - 2 * MARGIN:
+                break
+            size -= 2
+            font = _font(size, bold=bold)
         bbox = self.draw.textbbox((0, 0), text, font=font)
-        x = (W - (bbox[2] - bbox[0])) // 2 - bbox[0]
+        x = max(MARGIN, (W - (bbox[2] - bbox[0])) // 2 - bbox[0])
         self.draw.text((x, self.y), text, font=font, fill=BLACK)
         self.y += (bbox[3] - bbox[1]) + gap
 
@@ -163,7 +176,7 @@ class Case:
     def _front(self) -> Sheet:
         s = Sheet()
         s.y = 120
-        s.centered(self.label_brand or self.brand, _font(64, bold=True), gap=30)
+        s.centered(self.label_brand or self.brand, _font(64, bold=True), gap=30, bold=True)
         s.centered(self.label_class_type or self.class_type, _font(44), gap=60)
 
         abv = self.label_abv_text
@@ -200,7 +213,7 @@ class Case:
     def _back(self) -> Sheet:
         s = Sheet(height=760)
         s.y = 90
-        s.centered(self.label_brand or self.brand, _font(30, bold=True), gap=50)
+        s.centered(self.label_brand or self.brand, _font(30, bold=True), gap=50, bold=True)
         if self.warning_mode != "missing":
             s.y = 260
             s.wrapped(_warning_runs(self.warning_mode))
@@ -219,10 +232,49 @@ class Case:
             images.append({"path": back_rel.replace(os.sep, "/"), "role": "back"})
         return images
 
+    # -- ground truth: what the label actually says, per check ------------
+
+    @property
+    def _fine_print(self) -> str:
+        producer = self.label_producer_line
+        if producer is None and self.applicant_name:
+            producer = f"Bottled by {self.applicant_name}"
+            if self.applicant_address:
+                producer += f", {self.applicant_address}"
+        return " ".join(x for x in (producer, self.fineprint_extra) if x)
+
+    def label_facts(self) -> dict:
+        """Per-check expectation of *what text the pipeline should read*.
+
+        Verdicts alone can be right for the wrong reason; this pins the reading.
+        """
+        from fixtures import numeric_facts, text_fact
+
+        front = 0
+        printed_abv = self.label_abv_text or self.alcohol_content
+        printed_net = self.label_net_text or self.net_contents
+        facts = {
+            "brand": text_fact(self.brand, self.label_brand or self.brand,
+                               front, self._fine_print),
+            "class_type": text_fact(self.class_type,
+                                    self.label_class_type or self.class_type, front),
+            "producer": text_fact(self.applicant_name, self.applicant_name, front),
+            "origin": text_fact(
+                self.origin,
+                self.origin if (self.label_origin_text and self.origin
+                                and self.origin.lower() in self.label_origin_text.lower())
+                else None,
+                front),
+        }
+        facts.update(numeric_facts(self.alcohol_content, self.net_contents,
+                                   printed_abv, printed_net, front))
+        return facts
+
     def to_record(self) -> dict:
         return {
             "case_id": self.case_id,
             "description": self.description,
+            "degraded": False,
             "application": {
                 "serial_number": self.serial,
                 "ttb_id": self.ttb_id,
@@ -237,6 +289,7 @@ class Case:
                 "images": self.render(),
             },
             "expect": self.expect,
+            "expect_observed": self.label_facts(),
         }
 
 
@@ -580,14 +633,28 @@ def _cases() -> list[Case]:
     return cases
 
 
+def _report_audit(problems: list[str]) -> None:
+    """A corpus with an illegible field is a broken corpus — say so, loudly."""
+    if not problems:
+        print("corpus audit: every printed field is legible on its own image")
+        return
+    print(f"corpus audit FAILED ({len(problems)} problem(s)):")
+    for p in problems:
+        print("  !! " + p)
+    raise SystemExit(1)
+
+
 def main() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
     records = [c.to_record() for c in _cases()]
+    problems = audit_corpus(records)
+
     with open(CASES_JSON, "w", encoding="utf-8") as fh:
         json.dump(records, fh, indent=2)
         fh.write("\n")
     print(f"wrote {len(records)} cases -> {os.path.relpath(CASES_JSON, REPO_ROOT)}")
     print(f"images -> {os.path.relpath(IMAGES_DIR, REPO_ROOT)}/")
+    _report_audit(problems)
 
 
 if __name__ == "__main__":

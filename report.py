@@ -143,7 +143,74 @@ def main() -> int:
 
     realistic_ok = _realistic_report(engine)
     boldness_ok = _boldness_report(engine)
-    return 0 if ok and p95 < 5000 and realistic_ok and boldness_ok else 1
+    reading_ok = _field_reading_report(engine)
+    return 0 if (ok and p95 < 5000 and realistic_ok and boldness_ok
+                 and reading_ok) else 1
+
+
+def _field_reading_report(engine) -> bool:
+    """Did every check read its *own* text, on the right image?
+
+    A verdict can be right for the wrong reason — a check pointing at another
+    check's line, or a label whose brand ran off the edge and was never OCR'd.
+    This is the table that makes that visible.
+    """
+    from ttbverify.normalize import compare
+
+    try:
+        cases = [c for c in (load_cases() + load_realistic_cases())
+                 if not c.get("degraded")]
+    except FileNotFoundError:
+        print("\n  (corpora not generated)")
+        return True
+
+    fields = ["brand", "class_type", "abv", "proof", "net_contents",
+              "producer", "origin"]
+    bar = "=" * 92
+    print()
+    print(bar)
+    print("FIELD READING  (does every category read its own text?)")
+    print(bar)
+    print(f"{'case':24s} " + " ".join(f"{f[:9]:>10s}" for f in fields))
+    print("-" * 92)
+
+    wrong: list[str] = []
+    for case in cases:
+        result = verify(LabelApplication(**case["application"]), engine)
+        by_id = {c.check_id: c for c in result.checks}
+        cells = []
+        for f in fields:
+            fact = (case.get("expect_observed") or {}).get(f)
+            check = by_id.get(f)
+            if check is None or fact is None:
+                cells.append(f"{'-':>10s}")
+                continue
+            if fact["status"] == "matched":
+                good = (check.observed is not None
+                        and compare(fact["text"], check.observed).outcome is Outcome.PASS
+                        and (fact.get("image") is None
+                             or check.image_index == fact["image"]))
+                mark = "ok" if good else "WRONG"
+            elif fact["status"] == "only_in_fine_print":
+                good = check.evidence.get("match") == "only_in_fine_print"
+                mark = "fineprint" if good else "WRONG"
+            else:
+                good = check.observed is None and check.outcome is Outcome.FAIL
+                mark = "notfound" if good else "WRONG"
+            if not good:
+                wrong.append(f"{case['case_id']}/{f}: read {check.observed!r}")
+            cells.append(f"{mark:>10s}")
+        print(f"{case['case_id']:24s} " + " ".join(cells))
+
+    print()
+    print(f"  fields read correctly      {'ALL' if not wrong else str(len(wrong)) + ' WRONG'}"
+          f"  {'PASS' if not wrong else 'FAIL'}")
+    for w in wrong:
+        print(f"      - {w}")
+    print("  ok = read its own text from the expected image · fineprint = the declared")
+    print("  value is on the label but buried in a longer statement (design 3.2) ·")
+    print("  notfound = not on the label, and the check says so rather than guessing.")
+    return not wrong
 
 
 def _realistic_report(engine) -> bool:

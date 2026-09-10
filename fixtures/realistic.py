@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from fixtures import REPO_ROOT
+from fixtures import REPO_ROOT, audit_corpus
 from ttbverify.warning import REFERENCE_WARNING
 
 IMAGES_DIR = os.path.join(REPO_ROOT, "fixtures", "images_realistic")
@@ -134,10 +134,35 @@ class Sheet:
                         max(0, min(255, b + j)))
 
     # -- text helpers --
+    #
+    # Everything centred goes through _fit(): text that would run past the
+    # margins is shrunk until it fits. A label that prints its brand off the
+    # edge is unreadable to OCR *and* to a person, and an earlier version of
+    # this generator did exactly that — silently.
+
+    MARGIN_X = 60
+
+    def _width(self, text: str, font: ImageFont.FreeTypeFont, spacing: int) -> float:
+        return self.d.textlength(text, font=font) + spacing * max(0, len(text) - 1)
+
+    def _fit(self, text: str, stack: list[str], size: int, spacing: int
+             ) -> tuple[ImageFont.FreeTypeFont, int]:
+        """Largest size (and, if needed, reduced tracking) that fits the label."""
+        max_w = self.w - 2 * self.MARGIN_X
+        sp = spacing
+        while size >= 10:
+            font = _font(stack, size)
+            if self._width(text, font, sp) <= max_w:
+                return font, sp
+            if sp > 0:
+                sp = max(0, sp - 2)
+                continue
+            size -= 2
+            sp = spacing
+        return _font(stack, 10), 0
 
     def _center_x(self, text: str, font: ImageFont.FreeTypeFont, spacing: int) -> float:
-        w = self.d.textlength(text, font=font) + spacing * max(0, len(text) - 1)
-        return (self.w - w) / 2
+        return max(self.MARGIN_X, (self.w - self._width(text, font, spacing)) / 2)
 
     def caps(self, text: str, font: ImageFont.FreeTypeFont, *, gap: int,
              spacing: int | None = None, fill=None, y: float | None = None) -> None:
@@ -153,12 +178,20 @@ class Sheet:
         if y is None:
             self.y = yy + asc + desc + gap
 
+    def caps_fit(self, text: str, stack: list[str], size: int, *, gap: int,
+                 spacing: int | None = None, fill=None,
+                 y: float | None = None) -> None:
+        """`caps`, but shrink-to-fit the label width first."""
+        sp = self.t.letter_spacing if spacing is None else spacing
+        font, sp = self._fit(text, stack, size, sp)
+        self.caps(text, font, gap=gap, spacing=sp, fill=fill, y=y)
+
     def line_center(self, text: str, font: ImageFont.FreeTypeFont, *, gap: int,
                     fill=None, y: float | None = None) -> None:
         fill = fill or self.t.ink
         yy = self.y if y is None else y
-        w = self.d.textlength(text, font=font)
-        self.d.text(((self.w - w) / 2, yy), text, font=font, fill=fill)
+        x = max(self.MARGIN_X, (self.w - self.d.textlength(text, font=font)) / 2)
+        self.d.text((x, yy), text, font=font, fill=fill)
         asc, desc = font.getmetrics()
         if y is None:
             self.y = yy + asc + desc + gap
@@ -376,22 +409,22 @@ class RCase:
         s.rule(inset=300, gap=40, dots=True)
 
         brand = (self.label_brand or self.brand)
-        bfont = _font(t.display, 72)
-        # Wrap onto two lines only if it won't fit, and never leave a 1-2 char
-        # word stranded on its own line (real labels don't, and OCR drops it).
-        fits = s.d.textlength(brand, font=bfont) + t.letter_spacing * len(brand) < s.w - 160
         parts = brand.split(" ")
-        if fits or len(parts) < 3:
-            s.caps(brand, bfont, gap=24)
+        one_line, _sp = s._fit(brand, t.display, 72, t.letter_spacing)
+        # Wrap onto two lines only when a single line would have to shrink a lot,
+        # and never strand a 1-2 char word on its own line.
+        if one_line.size >= 60 or len(parts) < 3:
+            s.caps_fit(brand, t.display, 72, gap=24)
         else:
             best = min(range(1, len(parts)),
                        key=lambda i: abs(len(" ".join(parts[:i])) - len(" ".join(parts[i:]))))
-            s.caps(" ".join(parts[:best]), bfont, gap=6)
-            s.caps(" ".join(parts[best:]), bfont, gap=24)
+            s.caps_fit(" ".join(parts[:best]), t.display, 72, gap=6)
+            s.caps_fit(" ".join(parts[best:]), t.display, 72, gap=24)
+
 
         s.rule(inset=260, gap=26)
         s.line_center("Small Batch Reserve", _font(t.body_i, 30), gap=26, fill=t.faint)
-        s.caps(self.class_type, _font(t.body, 30), gap=30, spacing=2)
+        s.caps_fit(self.class_type, t.body, 30, gap=30, spacing=2)
 
         s.medallion(500, 760, 92, "AGED", "IN OAK")
 
@@ -413,7 +446,7 @@ class RCase:
             s.paragraph([(prod, _font(t.body, 17))], x=140, width=720, gap=6,
                         fill=t.faint, y=prod_y, justify=False)
         if self.label_origin_text:
-            s.caps(self.label_origin_text, _font(t.body, 18), gap=6, spacing=3,
+            s.caps_fit(self.label_origin_text, t.body, 18, gap=6, spacing=3,
                    fill=t.faint, y=prod_y + 60)
         if self.fineprint_extra:
             s.paragraph([(self.fineprint_extra, _font(t.body, 15))], x=120, width=760,
@@ -438,7 +471,7 @@ class RCase:
         s = Sheet(1000, 880, t, flat=True)
         s.frame(36, double=False)
         s.y = 70
-        s.caps(self.label_brand or self.brand, _font(t.display, 30), gap=26)
+        s.caps_fit(self.label_brand or self.brand, t.display, 30, gap=26)
 
         s.paragraph([(self._BLURB[self.commodity], _font(t.body, 17))],
                     x=90, width=820, gap=16, fill=t.faint)
@@ -490,11 +523,47 @@ class RCase:
             out.append({"path": rel, "role": role})
         return out
 
+    # -- ground truth: what the label actually says, per check ------------
+
+    @property
+    def _fine_print(self) -> str:
+        prod = self.producer_line
+        if prod is None and self.applicant_name:
+            prod = f"Distilled and bottled by {self.applicant_name}"
+            if self.applicant_address:
+                prod += f", {self.applicant_address}"
+        return " ".join(x for x in (prod, self.fineprint_extra) if x)
+
+    def label_facts(self) -> dict:
+        """Per-check expectation of *what text the pipeline should read*."""
+        from fixtures import numeric_facts, text_fact
+
+        front = 0
+        printed_abv = self.label_abv_line or self.alcohol_content
+        printed_net = self.label_net or self.net_contents
+        facts = {
+            "brand": text_fact(self.brand, self.label_brand or self.brand,
+                               front, self._fine_print),
+            "class_type": text_fact(self.class_type, self.class_type, front),
+            "producer": text_fact(self.applicant_name, self.applicant_name, front),
+            "origin": text_fact(
+                self.origin,
+                self.origin if (self.label_origin_text and self.origin
+                                and self.origin.lower() in self.label_origin_text.lower())
+                else None,
+                front),
+        }
+        facts.update(numeric_facts(self.alcohol_content, self.net_contents,
+                                   printed_abv, printed_net, front))
+        return facts
+
     def to_record(self) -> dict:
         return {
             "case_id": self.case_id,
             "grade": self.grade,
+            "degraded": bool(self.degrade),
             "note": self.note,
+            "expect_observed": self.label_facts(),
             "application": {
                 "serial_number": self.serial,
                 "ttb_id": self.ttb_id,
@@ -734,9 +803,22 @@ def _cases() -> list[RCase]:
     return C
 
 
+def _report_audit(problems: list[str]) -> None:
+    """A corpus with an illegible field is a broken corpus — say so, loudly."""
+    if not problems:
+        print("corpus audit: every printed field is legible on its own image")
+        return
+    print(f"corpus audit FAILED ({len(problems)} problem(s)):")
+    for p in problems:
+        print("  !! " + p)
+    raise SystemExit(1)
+
+
 def main() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
     records = [c.to_record() for c in _cases()]
+    problems = audit_corpus(records)
+
     with open(CASES_JSON, "w", encoding="utf-8") as fh:
         json.dump(records, fh, indent=2)
         fh.write("\n")
@@ -745,6 +827,7 @@ def main() -> None:
         grades[r["grade"]] = grades.get(r["grade"], 0) + 1
     print(f"wrote {len(records)} realistic cases {grades} -> "
           f"{os.path.relpath(CASES_JSON, REPO_ROOT)}")
+    _report_audit(problems)
 
 
 if __name__ == "__main__":

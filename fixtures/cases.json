@@ -2,6 +2,7 @@
   {
     "case_id": "clean_spirits",
     "description": "Clean distilled-spirits label, front+back, everything matches.",
+    "degraded": false,
     "application": {
       "serial_number": "100001",
       "ttb_id": "24001001000001",
@@ -36,11 +37,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "clean_wine",
     "description": "Clean imported-wine label with a declared country of origin.",
+    "degraded": false,
     "application": {
       "serial_number": "100002",
       "ttb_id": "24001001000002",
@@ -74,11 +115,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "MAISON DUBOIS",
+        "printed": "MAISON DUBOIS",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Bordeaux Red Wine",
+        "printed": "Bordeaux Red Wine",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Maison Dubois Imports",
+        "printed": "Maison Dubois Imports",
+        "image": 0
+      },
+      "origin": {
+        "status": "matched",
+        "text": "France",
+        "printed": "France",
+        "image": 0
+      },
+      "abv": {
+        "status": "matched",
+        "text": "13.5%",
+        "printed": "13.5% Alc./Vol.",
+        "image": 0
+      },
+      "proof": null,
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "clean_beer",
     "description": "Clean malt-beverage label, single image, warning on the front.",
+    "degraded": false,
     "application": {
       "serial_number": "100003",
       "ttb_id": "24001001000003",
@@ -108,11 +189,46 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "IRON RIVER BREWING",
+        "printed": "IRON RIVER BREWING",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "India Pale Ale",
+        "printed": "India Pale Ale",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Iron River Brewing Co.",
+        "printed": "Iron River Brewing Co.",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "6.2%",
+        "printed": "6.2% Alc./Vol.",
+        "image": 0
+      },
+      "proof": null,
+      "net_contents": {
+        "status": "matched",
+        "text": "12 floz",
+        "printed": "12 fl oz",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "undeclared_optionals",
     "description": "ABV and net contents not declared on the application; printed on the label. Must be NOT_DECLARED, never a mismatch.",
+    "degraded": false,
     "application": {
       "serial_number": "100004",
       "ttb_id": "24001001000004",
@@ -147,11 +263,41 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": null,
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": null
     }
   },
   {
     "case_id": "brand_case_variance",
     "description": "Application 'Stone's Throw', label 'STONE'S THROW'. Case-only difference \u2014 must PASS at the case-folded tier.",
+    "degraded": false,
     "application": {
       "serial_number": "100005",
       "ttb_id": "24001001000005",
@@ -186,11 +332,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "STONE'S THROW",
+        "printed": "STONE'S THROW",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Small Batch Gin",
+        "printed": "Small Batch Gin",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Stone's Throw Spirits",
+        "printed": "Stone's Throw Spirits",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "44%",
+        "printed": "44% Alc./Vol. (88 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "88 proof",
+        "printed": "44% Alc./Vol. (88 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "brand_mismatch",
     "description": "Declared brand appears only in the fine-print bottler line; the prominent brand on the label is different. Must FAIL \u2014 the prominence filter must not accept the fine-print occurrence.",
+    "degraded": false,
     "application": {
       "serial_number": "100006",
       "ttb_id": "24001001000006",
@@ -225,11 +411,49 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "only_in_fine_print",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Spiced Rum",
+        "printed": "Spiced Rum",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Rusty Anchor Spirits",
+        "printed": "Rusty Anchor Spirits",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "40%",
+        "printed": "40% Alc./Vol. (80 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "80 proof",
+        "printed": "40% Alc./Vol. (80 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "abv_mismatch",
     "description": "Declared 45% ABV, label prints 40% (internally consistent with its 80 proof). ABV check must FAIL.",
+    "degraded": false,
     "application": {
       "serial_number": "100007",
       "ttb_id": "24001001000007",
@@ -264,11 +488,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "40%",
+        "printed": "40% Alc./Vol. (80 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "80 proof",
+        "printed": "40% Alc./Vol. (80 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "abv_proof_inconsistent",
     "description": "Label prints 45% Alc./Vol. but 100 proof (should be 90). ABV matches the application; the proof check must FAIL.",
+    "degraded": false,
     "application": {
       "serial_number": "100008",
       "ttb_id": "24001001000008",
@@ -303,11 +567,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (100 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "100 proof",
+        "printed": "45% Alc./Vol. (100 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "abv_near_miss",
     "description": "Declared 45%, label prints 45.3%. Within the near-miss band \u2014 routes to REVIEW, not FAIL.",
+    "degraded": false,
     "application": {
       "serial_number": "100009",
       "ttb_id": "24001001000009",
@@ -342,11 +646,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45.3%",
+        "printed": "45.3% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45.3% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "net_unit_variance",
     "description": "Declared '750 mL', label prints '0.75 L'. Same volume \u2014 must PASS.",
+    "degraded": false,
     "application": {
       "serial_number": "100010",
       "ttb_id": "24001001000010",
@@ -380,11 +724,46 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "STONEBRIDGE CELLARS",
+        "printed": "STONEBRIDGE CELLARS",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "California Chardonnay",
+        "printed": "California Chardonnay",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Stonebridge Cellars",
+        "printed": "Stonebridge Cellars",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "13%",
+        "printed": "13.0% Alc./Vol.",
+        "image": 0
+      },
+      "proof": null,
+      "net_contents": {
+        "status": "matched",
+        "text": "0.75 l",
+        "printed": "0.75 L",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "net_mismatch",
     "description": "Declared '750 mL', label prints '500 mL'. Must FAIL.",
+    "degraded": false,
     "application": {
       "serial_number": "100011",
       "ttb_id": "24001001000011",
@@ -418,11 +797,46 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "STONEBRIDGE CELLARS",
+        "printed": "STONEBRIDGE CELLARS",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "California Chardonnay",
+        "printed": "California Chardonnay",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Stonebridge Cellars",
+        "printed": "Stonebridge Cellars",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "13%",
+        "printed": "13.0% Alc./Vol.",
+        "image": 0
+      },
+      "proof": null,
+      "net_contents": {
+        "status": "matched",
+        "text": "500 ml",
+        "printed": "500 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "warning_missing",
     "description": "No health warning statement on any image. W-1 must FAIL; the dependent warning checks must not PASS.",
+    "degraded": false,
     "application": {
       "serial_number": "100012",
       "ttb_id": "24001001000012",
@@ -457,11 +871,51 @@
       "warn_text": "FAIL",
       "warn_case": "FAIL",
       "warn_bold": "FAIL"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "warning_reworded",
     "description": "Warning body reworded ('operate machinery' -> 'use heavy equipment'). W-2 must FAIL with a word diff.",
+    "degraded": false,
     "application": {
       "serial_number": "100013",
       "ttb_id": "24001001000013",
@@ -496,11 +950,51 @@
       "warn_text": "FAIL",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "warning_titlecase",
     "description": "'Government Warning:' in title case instead of all caps. W-3 must FAIL; wording itself is unchanged.",
+    "degraded": false,
     "application": {
       "serial_number": "100014",
       "ttb_id": "24001001000014",
@@ -535,11 +1029,51 @@
       "warn_text": "PASS",
       "warn_case": "FAIL",
       "warn_bold": "REVIEW"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "warning_charnoise",
     "description": "One character changed in the warning body ('machinery' -> 'machinory'), simulating an OCR misread. Must land on REVIEW, never a silent PASS and never a hard FAIL.",
+    "degraded": false,
     "application": {
       "serial_number": "100015",
       "ttb_id": "24001001000015",
@@ -574,11 +1108,51 @@
       "warn_text": "REVIEW",
       "warn_case": "PASS",
       "warn_bold": "PASS"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "warning_nonbold",
     "description": "'GOVERNMENT WARNING:' rendered in a regular (non-bold) weight. W-4 must NOT auto-confirm it \u2014 falls to REVIEW \u2014 while W-2/W-3 still PASS.",
+    "degraded": false,
     "application": {
       "serial_number": "100016",
       "ttb_id": "24001001000016",
@@ -613,11 +1187,51 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "REVIEW"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45%",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   },
   {
     "case_id": "abv_nearmiss_nonbold",
     "description": "ABV near-miss and a non-bold warning header on the same label \u2014 two independent REVIEW items for the review-flow tests.",
+    "degraded": false,
     "application": {
       "serial_number": "100017",
       "ttb_id": "24001001000017",
@@ -652,6 +1266,45 @@
       "warn_text": "PASS",
       "warn_case": "PASS",
       "warn_bold": "REVIEW"
+    },
+    "expect_observed": {
+      "brand": {
+        "status": "matched",
+        "text": "OLD TOM DISTILLERY",
+        "printed": "OLD TOM DISTILLERY",
+        "image": 0
+      },
+      "class_type": {
+        "status": "matched",
+        "text": "Kentucky Straight Bourbon Whiskey",
+        "printed": "Kentucky Straight Bourbon Whiskey",
+        "image": 0
+      },
+      "producer": {
+        "status": "matched",
+        "text": "Old Tom Distillery, LLC",
+        "printed": "Old Tom Distillery, LLC",
+        "image": 0
+      },
+      "origin": null,
+      "abv": {
+        "status": "matched",
+        "text": "45.3%",
+        "printed": "45.3% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "proof": {
+        "status": "matched",
+        "text": "90 proof",
+        "printed": "45.3% Alc./Vol. (90 Proof)",
+        "image": 0
+      },
+      "net_contents": {
+        "status": "matched",
+        "text": "750 ml",
+        "printed": "750 mL",
+        "image": 0
+      }
     }
   }
 ]
