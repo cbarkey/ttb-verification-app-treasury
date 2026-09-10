@@ -1,4 +1,4 @@
-"""The vision fallback end to end, replayed from disk (CLAUDE.md 2.9).
+"""The vision fallback end to end, replayed from disk (DESIGN.md 2.9).
 
 `test_ai.py` covers the pieces with stubs. This runs the *real* path — the real
 prompt, the real schema, the real request fingerprint — against committed

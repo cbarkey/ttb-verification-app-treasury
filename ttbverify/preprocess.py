@@ -7,7 +7,7 @@ fixture the brand line `MAISON DUBOIS` is simply absent from the OCR output at
 0 degrees and present after a 4 degree correction. That is a deterministic
 problem with a deterministic fix costing tens of milliseconds, and paying a
 2.5 s nondeterministic network round trip to paper over it would be both slower
-and less honest about where the remaining difficulty is (CLAUDE.md 2.9).
+and less honest about where the remaining difficulty is (DESIGN.md 2.9).
 
 **How the angle is found.** Text lines are alternating bands of ink and paper,
 so the horizontal projection profile of a correctly-oriented page swings hard

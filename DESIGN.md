@@ -1,4 +1,4 @@
-# CLAUDE.md — TTB Label Verification: Project Brief, Design, and Build Guidance
+# DESIGN.md — TTB Label Verification: Project Brief, Design, and Build Guidance
 
 **Read this before changing anything.** It is the single source of truth for this project:
 (1) the original take-home brief verbatim, (2) the technical design derived from it, (3)

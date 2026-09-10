@@ -86,7 +86,7 @@ export async function finalize(
   return getSession(id);
 }
 
-/** Draft rejection language for a label (CLAUDE.md 2.9, use C).
+/** Draft rejection language for a label (DESIGN.md 2.9, use C).
  *  Behind an explicit action, so it costs nothing unless an agent asks. */
 export async function draftNotice(id: string): Promise<DraftedNotice> {
   return unwrap<DraftedNotice>(

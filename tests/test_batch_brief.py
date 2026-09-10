@@ -1,4 +1,4 @@
-"""Gate 3 (CLAUDE.md 2.9): the triage brief changes nothing but the prose.
+"""Gate 3 (DESIGN.md 2.9): the triage brief changes nothing but the prose.
 
 The brief sits *above* the queue table and the table stays the record. That is
 easy to say and easy to break — a summariser that reorders rows, drops one, or

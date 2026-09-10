@@ -5,7 +5,7 @@ team that was burned by a slow vendor once already.
 
 The vision fallback at the end is the only model call on this path, it is
 conditional on a field still being unreadable, and its output is capped at
-`REVIEW`. See `_apply_vision_fallback` and CLAUDE.md 2.9.
+`REVIEW`. See `_apply_vision_fallback` and DESIGN.md 2.9.
 """
 
 from __future__ import annotations
@@ -183,7 +183,7 @@ def _apply_vision_fallback(
 ) -> list[CheckResult]:
     """Retry still-unreadable fields with a vision model, capped at REVIEW.
 
-    **The cap is the entire safety argument and it is unconditional** (CLAUDE.md
+    **The cap is the entire safety argument and it is unconditional** (DESIGN.md
     2.9). A model-sourced reading becomes `REVIEW` — never `PASS`, and never
     `FAIL` either — whatever the comparison ladder concludes about it. The
     comparison still runs, because "the label appears to read `STONE'S THROW`,

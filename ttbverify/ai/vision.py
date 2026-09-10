@@ -1,4 +1,4 @@
-"""Use A: read fields OCR could not (CLAUDE.md 2.9).
+"""Use A: read fields OCR could not (DESIGN.md 2.9).
 
 This is the only model call on the per-label path, and it is conditional — it
 fires only when a field is still `UNREADABLE` after deskew and OCR. On a clean
@@ -134,7 +134,7 @@ def read_fields(client: AiClient, image_path: str, check_ids: list[str], *,
 # Below this the model is not reporting a reading, it is reporting that it
 # couldn't get one. Discarding on low confidence is the safe direction and is
 # not the mirror of promoting on high confidence — there is still no confidence
-# at which a model reading becomes a PASS (CLAUDE.md 2.9).
+# at which a model reading becomes a PASS (DESIGN.md 2.9).
 _MIN_CONFIDENCE = 0.25
 
 # Sentinels seen in practice. The prompt asks for null when a field can't be

@@ -1,5 +1,5 @@
 /**
- * Attribution for anything a model touched (CLAUDE.md 2.9).
+ * Attribution for anything a model touched (DESIGN.md 2.9).
  *
  * The rule the UI has to make good on: an agent must always be able to tell
  * which findings came from a model and which came from deterministic code. So

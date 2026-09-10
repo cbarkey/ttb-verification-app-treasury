@@ -1,4 +1,4 @@
-"""Use B: the batch triage brief (CLAUDE.md 2.9).
+"""Use B: the batch triage brief (DESIGN.md 2.9).
 
 Sarah Chen's problem is 200-300 applications arriving at once and 47 agents to
 work them. The queue table already tells her *what* failed; what it doesn't tell

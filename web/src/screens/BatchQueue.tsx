@@ -158,7 +158,7 @@ export function BatchQueue({ batchId, onReview }: Props) {
 }
 
 /**
- * The triage brief (CLAUDE.md 2.9, use B).
+ * The triage brief (DESIGN.md 2.9, use B).
  *
  * Prose *above* the table, never inside it. The table is the record and the
  * brief is one supervisor's-eye read of it — so it is visually separated,

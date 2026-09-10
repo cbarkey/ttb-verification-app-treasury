@@ -1,4 +1,4 @@
-"""Where AI fits: three uses, none of which decide compliance (CLAUDE.md 2.9).
+"""Where AI fits: three uses, none of which decide compliance (DESIGN.md 2.9).
 
   A. `vision`  — read fields OCR could not. Capped at REVIEW by the pipeline.
   B. `brief`   — triage a finished batch. Prose above the table; table is record.

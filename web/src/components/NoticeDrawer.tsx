@@ -1,5 +1,5 @@
 /**
- * A drafted rejection notice (CLAUDE.md 2.9, use C).
+ * A drafted rejection notice (DESIGN.md 2.9, use C).
  *
  * The agent owns this text. That is a UI decision as much as a policy one, so
  * the panel is built to make it obvious: the draft lands in an editable

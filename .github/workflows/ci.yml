@@ -1,6 +1,6 @@
 # CI for the TTB label verification prototype.
 #
-# Mirrors CLAUDE.md 2.6: lint -> tests -> accuracy gates -> frontend -> container.
+# Mirrors DESIGN.md 2.6: lint -> tests -> accuracy gates -> frontend -> container.
 # Three things here are deliberate and worth not "fixing" later:
 #
 #   * **No step can reach a model, and none needs to.** `NullAi` is the default

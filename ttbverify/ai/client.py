@@ -1,4 +1,4 @@
-"""The one place this project talks to a model (CLAUDE.md 2.9).
+"""The one place this project talks to a model (DESIGN.md 2.9).
 
 Three callers sit on top of this — `vision.py`, `brief.py`, `notice.py` — and
 none of them decides a compliance verdict. What this module is responsible for is

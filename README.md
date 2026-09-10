@@ -1,68 +1,182 @@
 # TTB Label Verification
 
-AI-powered alcohol label verification take-home. Full design and rationale in
-[`CLAUDE.md`](CLAUDE.md): Section 2 is the technical design (2.9 is *where the AI fits*),
-Section 3 is the list of implementation pitfalls each rule is built and tested against, and
-Section 6 is a running build log.
+**[▶ Try it: ttb-verification-app-treasury.onrender.com](https://ttb-verification-app-treasury.onrender.com/)**
 
-An agent uploads a label image and the application values that were declared for it. The
-tool reads the label, compares the two, and returns a per-field verdict with the evidence
-behind it — including the region of the image each finding came from.
+An agent uploads a label image and the values declared on the application. The tool reads the
+label, compares the two, and returns a per-field verdict with the evidence behind it —
+including the exact region of the image each finding came from.
 
-**Where it is now.** The verification core, the service, both UIs (single label and batch),
-deskew preprocessing, and the three AI features are built and tested. Deployment is the
-remaining piece.
+Built for the TTB take-home. Full design record in [`DESIGN.md`](DESIGN.md).
+
+### Three things to try first
+
+1. **Check one label** → use any pair from [`fixtures/images_realistic/`](fixtures/images_realistic).
+   `r06_abv_mismatch_front.png` + `_back.png` declare `45% Alc./Vol.` but the label reads 43% —
+   the review screen boxes the discrepancy on the image.
+2. **Upload a batch** → [`samples/sample_batch_issues.zip`](samples). Pre-flight catches two bad
+   manifest rows *before* anything processes; the rest stream in with exceptions sorted to the top.
+3. On a flagged batch row, hit **Draft notice** — the rejection letter is written from the
+   findings the rules engine already produced.
+
+> It's a prototype: no login, no COLA integration, nothing stored. Sessions live in memory and
+> vanish on restart.
 
 ---
 
-## Where the AI is, and where it deliberately isn't
+## Screenshots
 
-The brief is titled *AI-Powered Alcohol Label Verification*, so it is worth being precise
-rather than vague about this.
+**The review screen.** Declared 45%, label reads 43%. The mismatch is boxed in red on the image,
+everything that matched is green, and the crop underneath shows the actual print.
 
-**AI is used in three places, none of which decide compliance:**
+![Review screen](docs/screenshots/02-review-split-pane.png)
 
-| | What it does | Decides a verdict? |
+**Batch queue.** Exceptions sorted to the top, with an AI-written triage brief *above* the table —
+labelled advisory, and never part of the record.
+
+![Batch queue with AI triage brief](docs/screenshots/04-batch-queue-ai-brief.png)
+
+**Drafted rejection notice**, from findings the deterministic engine produced. The agent edits and
+sends it; there is no Send button here on purpose.
+
+![Drafted notice](docs/screenshots/05-drafted-notice.png)
+
+<details>
+<summary>Result screen · batch pre-flight</summary>
+
+![Result screen](docs/screenshots/01-result.png)
+![Batch pre-flight](docs/screenshots/03-batch-preflight.png)
+
+</details>
+
+---
+
+## Approach
+
+**The compliance decisions are deterministic; AI is used where it adds something rules can't.**
+Three properties matter more than model capability for a regulatory tool: the same label must
+produce the same verdict every time, the answer has to arrive in seconds, and a finding has to be
+explainable to an auditor. "The wording differs at word 34 — the statute says *machinery*, the
+label says *a boat*" is checkable. "The model flagged it" is not.
+
+**Speed comes from doing the cheap thing first.** Local OCR on every label, a network call to a
+model only when OCR genuinely failed. p95 is ~600 ms locally against a 5-second budget — the
+budget exists because the previous vendor pilot took 30–40 seconds and agents abandoned it.
+
+**Three outcomes, not two.** `PASS` / `FAIL` / **`REVIEW`** / `UNREADABLE` / `NOT_DECLARED`. An
+unreadable photo is never a compliance failure, a value the applicant never declared is never a
+mismatch, and the governing rule throughout is *never emit `PASS` for a check that wasn't actually
+performed*.
+
+**Single label and batch, sharing one pipeline.** One label for the interactive path; a ZIP plus
+`manifest.csv` for the 200–300-label submissions that arrive in peak season. Batch validates the
+manifest *before* processing anything, then streams results so an agent starts working exceptions
+while the tail is still running.
+
+**A review screen that shows the evidence, not just the verdict.** Split pane: checks on the left,
+the label on the right with the active field boxed and everything else dimmed, plus a zoomed crop
+because small print is the whole problem. Selection is two-way. Each `REVIEW` item gets two large
+buttons in the agent's language — *Same product* / *Not a match* — not the machine's.
+
+**AI in three places, none of which decide compliance.** A vision model reads fields OCR couldn't,
+capped at `REVIEW`; an LLM writes the batch triage brief; another drafts rejection language. Detail
+below.
+
+**Testing that asserts what each check *read*, not just what it decided.** This caught two real
+defects that outcome-only tests passed straight over. Detail below.
+
+## Requirements, traced to the interviews
+
+The brief's "Technical Requirements" section is deliberately thin — the real requirements are
+buried in the interview transcripts as anecdotes. Each of these is implemented and has a test.
+
+| From the interviews | Requirement | Where it lives |
 |---|---|---|
-| **Vision fallback** | When OCR still can't read a field after preprocessing, a vision model is asked what the label says | **No** — the reading is capped at `REVIEW` |
-| **Batch triage brief** | After a batch finishes, one call turns the structured findings into "these 31 exceptions are one importer's rounding error; handle them as a group" | No — the queue table stays the record |
-| **Draft rejection language** | On demand, turns findings the rules engine already produced into a notice the agent edits and sends | No — the decision is already made |
+| Dave: *"'STONE'S THROW' on the label but 'Stone's Throw' in the application… obviously the same thing"* | Case/punctuation-tolerant matching | `normalize.py` — a 4-tier ladder, and the tier that fired is shown to the agent |
+| Dave: *"You need judgment"* | A third outcome between pass and fail | `REVIEW` + the split-pane review screen |
+| Jenny: *"'Government Warning' in title case instead of all caps. Rejected."* | W-3 capitalization check | `warning.py`, and the `warning_titlecase` fixture |
+| Jenny: *"has to be exact. Word-for-word"* | W-2 statutory wording, word-level diff | `warning.py` — two-band, because real OCR makes character errors |
+| Jenny: *"if an agent can't read the label they just reject it and ask for a better image"* | `UNREADABLE` never collapses into `FAIL`; vision fallback | `models.py`, `ai/vision.py` |
+| Jenny: *"photographed at weird angles, or the lighting is bad"* | Deskew / keystone correction before OCR | `preprocess.py` |
+| Sarah: *"200, 300 label applications at once"* | Batch upload + streamed results | `service/routes_batch.py` |
+| Sarah: *"30, 40 seconds… nobody's going to use it"* | 5 s p95 budget, measured and gated | `report.py`, shown in the UI |
+| Sarah: *"something my mother could figure out"* | One primary action per screen, plain-language outcomes | `web/src/screens/` |
+| Marcus: *"our firewall blocked connections to their ML endpoints"* | Every model call behind an interface with a working no-network fallback | `ai/client.py` — `NullAi` is the default |
+| Marcus: *"don't do anything crazy… we're not storing anything sensitive"* | No persistence at all; in-memory, TTL-swept | `service/sessions.py` |
 
-**Every regulatory verdict comes from deterministic code.** The normalization ladder, the
-statutory warning comparison, the capitalization rule, the boldness measurement and all the
-numeric comparisons are ordinary code with ordinary tests. That is what makes a finding
-explainable to an auditor by pointing at the exact word that didn't match the statute,
-rather than at a model.
+## Tools used
 
-### The cap, which is the whole safety argument
+| | |
+|---|---|
+| **OCR** | Tesseract 5.x, invoked as a subprocess in **TSV mode** — the default text output discards casing, boxes and confidence, and all three are needed. Chosen over PaddleOCR in a measured bake-off (below) |
+| **Backend** | Python 3.12 · FastAPI · uvicorn |
+| **Imaging** | Pillow — label rendering, deskew, and the W-4 stroke-weight measurement |
+| **AI** | Anthropic `claude-sonnet-5`, via forced tool calls with a JSON schema. Optional: absent a key the app runs without those features |
+| **Frontend** | React 18 · Vite · Tailwind v4 · TypeScript |
+| **Tests** | pytest — 327 tests, none of which touch the network |
+| **Lint** | ruff, config in `pyproject.toml`, gated in CI |
+| **Delivery** | One Docker image (frontend + API), GitHub Actions, deployed on Render |
 
-**A model-sourced reading can only ever produce `REVIEW`.** Not `PASS`, and not `FAIL`
-either. The model's only power is to convert *"I can't read this"* into *"here's what it
-appears to say — please confirm."*
+Deliberately **no** third-party fuzzy-matching library: `normalize.py` has a ~30-line normalized
+Levenshtein ratio. Dependency-free keeps the no-egress story honest and the unit tests in
+milliseconds.
 
-Verified against the live API, not just asserted: on a deliberately poor photograph, OCR read
-only `RUSTY ANCHOR`, the model read `40% ALC./VOL. (80 PROOF)` and `750 mL` at 0.98
-confidence, and **both landed at `REVIEW`** despite matching the declared values exactly.
+## Assumptions made
 
-Three consequences worth stating:
+Stated because several of these are judgement calls a reviewer should be able to disagree with.
 
-- **"Zero false approvals" stays a property of the deterministic system.** It is gated in CI
-  against corpora that can be re-run; a nondeterministic component able to mint a `PASS`
-  would move a proven property into the merely-likely column.
-- **Network dependence is benign.** With a key: `REVIEW` plus a reading. Without one:
-  `UNREADABLE`. Both route to a human; neither approves. Whether Marcus Williams' firewall
-  let the call through changes the *evidence*, never the *verdict class*.
-- **Nothing is auto-approved on a model's say-so**, which is the property that lets this
-  anywhere near a regulatory workflow at all.
+1. **The 5-second budget is per-label interactive latency, not per-batch.** The anecdote describes
+   an agent waiting on *one* label. Batch is specified as throughput with streamed results.
+2. **The input contract is modelled on the real TTB Form 5100.31** — its field names, and the
+   14-digit TTB ID as the key — rather than invented. It costs nothing and grounds the prototype.
+3. **Declared fields are optional.** ABV and net contents aren't structured on every COLA record,
+   so a missing value is `NOT_DECLARED`, never a mismatch.
+4. **ABV is compared exactly; near-misses (≤ 0.5%) go to `REVIEW`.** Per-commodity regulatory
+   tolerances exist and are deliberately *not* asserted — a prototype shouldn't claim tolerance
+   values it hasn't verified against current regulation.
+5. **Batch manifests require a `commodity` column** that the brief's sample manifest omits. The
+   canonical schema needs it and there is no safe default.
+6. **The health warning reference text is 27 CFR 16.21 verbatim**, treated as exact.
+7. **Type-size and characters-per-inch are out of scope** — TTB's own certificate states TTB does
+   not review labels for type size; the industry member remains responsible.
+8. **No authentication, no persistence, one instance.** In-memory state is what keeps this out of
+   the retention and PII conversation; the cost is that it scales vertically, not by replica count.
 
-### Without an API key
+## Results
 
-The app runs identically minus those three features. That is a **supported configuration,
-not a degraded one** — `NullAi` is the default, and it is what the entire test suite runs on,
-which is how "works with no network" (N-06) stays continuously asserted instead of claimed.
-No test in this repository opens a socket; the model-backed paths replay recorded cassettes.
+Real Tesseract 5.4, no model configured, on a Windows laptop. Gated in CI on every push.
 
----
+```
+false approvals                 0            (gated — must be 0)
+expectation mismatches          0            (every check matches checked-in ground truth)
+every field reads its own text  PASS         (gated — see Testing)
+warning-statement recall        1.0          (every warning defect fixture is caught)
+latency  p50 / p95              591 / 606 ms (budget 5000 ms)
+review rate                     3.3%         (reported, not gated; 9.9% before W-4 auto-confirm)
+```
+
+Realistic corpus (styled and photographed labels): p95 **962 ms**, 0 false approvals.
+On the deployed instance, a two-image label round-trips in **~1.4 s** including network.
+
+## Future work
+
+In rough priority order, if this went past prototype:
+
+- **Validate against real COLA history.** Every number above is measured on 83 labels this
+  repository generates. The honest next step is a back-test against historical COLA submissions
+  and their actual agent decisions — that turns "0 false approvals on our corpus" into a claim
+  about the real distribution, and would surface label conventions no synthetic generator invents.
+- **Watch agents use it and interview them afterwards**, the same way the brief's own discovery
+  sessions were run. The review screen is a hypothesis about what an agent needs; Dave and Jenny
+  would find its rough edges in an afternoon. Specifically worth testing: whether the `REVIEW`
+  rate feels like help or noise, and whether the AI triage brief actually changes how a supervisor
+  works a queue or just gets scrolled past.
+- **Persist batches.** Batch state in memory is what forces the single-instance deployment.
+  A real store removes that constraint and makes work survive a restart.
+- **Expand the rules engine** — standards of identity and fill, appellations, allergen statements.
+  Each is a self-contained addition to `rules.py`.
+- **Close the remaining OCR gaps** listed under Known Limitations: glare, and warning text on a
+  strongly keystoned back label.
+- **Authentication and audit logging**, which a real deployment needs and a prototype shouldn't fake.
 
 ## Setup
 
@@ -143,68 +257,67 @@ CORS, nothing to configure. Add `-e ANTHROPIC_API_KEY=...` to enable the AI feat
 
 ---
 
-## What works
+# In depth
 
-| Capability | Status |
-|---|---|
-| Brand / class-type matching via the 4-tier normalization ladder | done |
-| Display admissibility so a fine-print brand string isn't a false match (design 3.2) | done |
-| ABV parsing across label phrasings; proof-vs-ABV (`proof == 2 × ABV`) consistency | done |
-| Net contents with unit normalization (mL / cL / L / fl oz / pt) | done |
-| Health warning W-1 presence, W-2 wording (two-band), W-3 capitalization | done |
-| W-4 boldness — confidence-gated auto-confirm against the statement's own regular text | done |
-| Word-level diff of a non-compliant warning statement | done |
-| `NOT_DECLARED` (no application value) distinct from `UNREADABLE` (couldn't read it) | done |
-| Multi-image applications (front / back) — checks run across all images (F-08) | done |
-| Per-stage latency measured and reported (N-03) | done |
-| **Deskew / keystone preprocessing** before OCR, applied only when it measurably helps | done |
-| **FastAPI service** — `POST /api/verify`, session store, decisions, finalize | done |
-| **React UI** — single-label form + result + split-pane review (design 2.5) | done |
-| **Batch** — ZIP + `manifest.csv`, pre-flight reconciliation (F-10), streamed queue, per-row review (F-05) | done |
-| **Realistic fixture corpus** — colour / serif / borders / boxed & rotated warnings / photos | done |
-| **AI: vision fallback, batch brief, drafted notices** — behind one interface, `NullAi` default, cassette-tested | done |
-| **Container** — single image, `$PORT`-aware, health-checked, clean SIGTERM shutdown | built and run-tested |
-| CI | written, not yet run against a remote |
-| Deployment | in progress |
+## Where the AI is, and where it deliberately isn't
 
-### API
+**AI is used in three places, none of which decide compliance:**
 
-| Route | Purpose |
-|---|---|
-| `POST /api/verify` | multipart: declared fields + image(s) → result + session |
-| `GET /api/sessions/{id}` | session state (result, decisions, what's unresolved) |
-| `POST /api/sessions/{id}/decisions` | record an agent's call on one `REVIEW` item |
-| `POST /api/sessions/{id}/draft-notice` | AI: draft rejection language for this label |
-| `POST /api/sessions/{id}/finalize` | approve / reject / request better image |
-| `POST /api/verify/batch` | ZIP upload → pre-flight report |
-| `POST /api/verify/batch/{id}/start` | begin processing |
-| `GET /api/verify/batch/{id}/events` | SSE: one event per row + progress + done |
-| `GET /api/verify/batch/{id}` | full batch state, including the triage brief |
-| `GET/POST /api/verify/batch/{id}/rows/{serial}[/…]` | per-row review + resolve + draft notice |
-| `GET /api/verify/batch/{id}/export.csv` | decisions CSV |
-| `GET /api/health` | OCR + AI availability, engine, model id, active sessions |
+| | What it does | Decides a verdict? |
+|---|---|---|
+| **Vision fallback** | When OCR still can't read a field after preprocessing, a vision model is asked what the label says | **No** — the reading is capped at `REVIEW` |
+| **Batch triage brief** | After a batch finishes, one call turns the structured findings into "these 31 exceptions are one importer's rounding error; handle them as a group" | No — the queue table stays the record |
+| **Draft rejection language** | On demand, turns findings the rules engine already produced into a notice the agent edits and sends | No — the decision is already made |
 
-Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swept (N-05).
+**Every regulatory verdict comes from deterministic code.** The normalization ladder, the
+statutory warning comparison, the capitalization rule, the boldness measurement and all the
+numeric comparisons are ordinary code with ordinary tests. That is what makes a finding
+explainable to an auditor by pointing at the exact word that didn't match the statute,
+rather than at a model.
+
+### The cap, which is the whole safety argument
+
+**A model-sourced reading can only ever produce `REVIEW`.** Not `PASS`, and not `FAIL`
+either. The model's only power is to convert *"I can't read this"* into *"here's what it
+appears to say — please confirm."*
+
+Verified against the live API, not just asserted: on a deliberately poor photograph, OCR read
+only `RUSTY ANCHOR`, the model read `40% ALC./VOL. (80 PROOF)` and `750 mL` at 0.98
+confidence, and **both landed at `REVIEW`** despite matching the declared values exactly.
+
+Three consequences worth stating:
+
+- **"Zero false approvals" stays a property of the deterministic system.** It is gated in CI
+  against corpora that can be re-run; a nondeterministic component able to mint a `PASS`
+  would move a proven property into the merely-likely column.
+- **Network dependence is benign.** With a key: `REVIEW` plus a reading. Without one:
+  `UNREADABLE`. Both route to a human; neither approves. Whether Marcus Williams' firewall
+  let the call through changes the *evidence*, never the *verdict class*.
+- **Nothing is auto-approved on a model's say-so**, which is the property that lets this
+  anywhere near a regulatory workflow at all.
+
+### Without an API key
+
+The app runs identically minus those three features. That is a **supported configuration,
+not a degraded one** — `NullAi` is the default, and it is what the entire test suite runs on,
+which is how "works with no network" (N-06) stays continuously asserted instead of claimed.
+No test in this repository opens a socket; the model-backed paths replay recorded cassettes.
 
 ---
 
-## Measured on the fixture corpus
+## Testing
 
-Real Tesseract 5.4, `NullAi`, 17 clean labels (front+back where applicable), Windows laptop:
+The layers are ordinary — unit, golden, contract, performance — but one of them is the reason
+this section exists at all, and it was added late after the outcome-only gates let two real
+defects through.
 
-```
-false approvals              0            (gated — must be 0)
-expectation mismatches       0            (every check matches checked-in ground truth)
-every field reads its own text  PASS      (gated — see below)
-warning-statement recall     1.0          (every warning defect fixture is caught)
-latency  p50 / p95           591 / 606 ms (budget 5000 ms, N-01)
-review rate                  3.3%         (reported, not gated; 9.9% before W-4 auto-confirm)
-```
-
-Realistic corpus (styled + photographed labels): p95 **962 ms**, 0 false approvals.
-
-`report.py` also burns the review-overlay boxes into `out/overlay_*.png` — the same
-`CheckResult.box` coordinates the split-pane review screen draws.
+**Where to look:** [`tests/`](tests) · generated labels in [`fixtures/images/`](fixtures/images)
+(clean), [`fixtures/images_realistic/`](fixtures/images_realistic) (styled + photographed) and
+[`fixtures/images_boldness/`](fixtures/images_boldness) (W-4 calibration). Every label is rendered
+by [`fixtures/generate.py`](fixtures/generate.py),
+[`realistic.py`](fixtures/realistic.py) and [`boldness.py`](fixtures/boldness.py), with its ground
+truth checked in beside it. `python report.py` prints every gate and burns the review-overlay
+boxes into `out/overlay_*.png` — the same `CheckResult.box` coordinates the review screen draws.
 
 ### Per-field reading — the gate that matters most
 
@@ -261,6 +374,51 @@ decidable auto-decide rate                 48%   (reported, not gated)
 
 On a machine without the adversarial faces (any stock Linux box) those two cases are dropped
 rather than substituted, and the remaining 48 still calibrate the threshold.
+
+---
+
+## What works
+
+| Capability | Status |
+|---|---|
+| Brand / class-type matching via the 4-tier normalization ladder | done |
+| Display admissibility so a fine-print brand string isn't a false match (design 3.2) | done |
+| ABV parsing across label phrasings; proof-vs-ABV (`proof == 2 × ABV`) consistency | done |
+| Net contents with unit normalization (mL / cL / L / fl oz / pt) | done |
+| Health warning W-1 presence, W-2 wording (two-band), W-3 capitalization | done |
+| W-4 boldness — confidence-gated auto-confirm against the statement's own regular text | done |
+| Word-level diff of a non-compliant warning statement | done |
+| `NOT_DECLARED` (no application value) distinct from `UNREADABLE` (couldn't read it) | done |
+| Multi-image applications (front / back) — checks run across all images (F-08) | done |
+| Per-stage latency measured and reported (N-03) | done |
+| **Deskew / keystone preprocessing** before OCR, applied only when it measurably helps | done |
+| **FastAPI service** — `POST /api/verify`, session store, decisions, finalize | done |
+| **React UI** — single-label form + result + split-pane review (design 2.5) | done |
+| **Batch** — ZIP + `manifest.csv`, pre-flight reconciliation (F-10), streamed queue, per-row review (F-05) | done |
+| **Realistic fixture corpus** — colour / serif / borders / boxed & rotated warnings / photos | done |
+| **AI: vision fallback, batch brief, drafted notices** — behind one interface, `NullAi` default, cassette-tested | done |
+| **Container** — single image, `$PORT`-aware, health-checked, clean SIGTERM shutdown | built and run-tested |
+| **CI** — lint, tests, accuracy gates, frontend build, container smoke test | green on GitHub Actions |
+| **Deployment** — one always-on container | live |
+
+### API
+
+| Route | Purpose |
+|---|---|
+| `POST /api/verify` | multipart: declared fields + image(s) → result + session |
+| `GET /api/sessions/{id}` | session state (result, decisions, what's unresolved) |
+| `POST /api/sessions/{id}/decisions` | record an agent's call on one `REVIEW` item |
+| `POST /api/sessions/{id}/draft-notice` | AI: draft rejection language for this label |
+| `POST /api/sessions/{id}/finalize` | approve / reject / request better image |
+| `POST /api/verify/batch` | ZIP upload → pre-flight report |
+| `POST /api/verify/batch/{id}/start` | begin processing |
+| `GET /api/verify/batch/{id}/events` | SSE: one event per row + progress + done |
+| `GET /api/verify/batch/{id}` | full batch state, including the triage brief |
+| `GET/POST /api/verify/batch/{id}/rows/{serial}[/…]` | per-row review + resolve + draft notice |
+| `GET /api/verify/batch/{id}/export.csv` | decisions CSV |
+| `GET /api/health` | OCR + AI availability, engine, model id, active sessions |
+
+Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swept (N-05).
 
 ---
 

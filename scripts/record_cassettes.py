@@ -1,6 +1,6 @@
 """Record (or inspect) the model replies the test suite replays.
 
-Why this exists: the AI paths in CLAUDE.md 2.9 have to be testable, and no test
+Why this exists: the AI paths in DESIGN.md 2.9 have to be testable, and no test
 in this project is allowed to open a socket — determinism, and the standing proof
 of the no-egress path (N-06). So the live API is called *here*, deliberately, by
 a person, and the replies are committed under `fixtures/cassettes/`.

@@ -1,4 +1,4 @@
-"""The AI layer: schema validation, cassettes, and the three uses (CLAUDE.md 2.9).
+"""The AI layer: schema validation, cassettes, and the three uses (DESIGN.md 2.9).
 
 **No test here opens a socket**, and that is the point rather than a convenience.
 The tool has to work behind Marcus's firewall, so "runs with no key and no

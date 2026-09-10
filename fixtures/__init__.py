@@ -214,7 +214,7 @@ def load_boldness_cases() -> list[dict]:
 
 
 # --------------------------------------------------------------------------
-# cassette scenario (CLAUDE.md 2.9 — the recorded vision path)
+# cassette scenario (DESIGN.md 2.9 — the recorded vision path)
 # --------------------------------------------------------------------------
 
 CASSETTE_IMAGES = os.path.join(os.path.dirname(__file__), "cassettes", "images")

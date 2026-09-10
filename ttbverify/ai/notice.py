@@ -1,4 +1,4 @@
-"""Use C: draft the rejection notice (CLAUDE.md 2.9).
+"""Use C: draft the rejection notice (DESIGN.md 2.9).
 
 Agents write these by hand today, from findings a machine already produced. This
 turns the findings into a first draft. It decides nothing — by the time this is

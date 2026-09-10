@@ -86,7 +86,7 @@ class TestNoLeakedFileHandles:
 
 
 class TestVisionFallbackIsCappedAtReview:
-    """CLAUDE.md 2.9: a model-sourced reading can only ever produce REVIEW.
+    """DESIGN.md 2.9: a model-sourced reading can only ever produce REVIEW.
 
     Not PASS, and not FAIL either. These two tests are the whole safety argument
     for letting a nondeterministic component near a compliance tool, so they

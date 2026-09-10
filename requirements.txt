@@ -3,7 +3,7 @@
 # depend on any network service or heavyweight ML stack.
 Pillow>=10,<13
 
-# The three AI features (CLAUDE.md 2.9). Used only when ANTHROPIC_API_KEY is
+# The three AI features (DESIGN.md 2.9). Used only when ANTHROPIC_API_KEY is
 # set: with no key the app runs identically minus those features, which is a
 # supported configuration (N-06) and what the whole test suite exercises.
 anthropic>=0.40
