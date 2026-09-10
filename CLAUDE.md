@@ -5,7 +5,7 @@
 implementation guidance and the pitfalls that actually bit, and (4) a build log of what
 exists today and why it is the way it is.
 
-**This is no longer a greenfield repo.** There is a working codebase, 309 passing tests,
+**This is no longer a greenfield repo.** There is a working codebase, 327 passing tests,
 three fixture corpora with per-field ground truth, and a running web app. Section 6 is the
 current state; Sections 3–5 are how to work on it without re-breaking things that have
 already been broken once.
@@ -1135,7 +1135,7 @@ cd web && npm install && npm run build && cd ..     # frontend -> web/dist
 python -m fixtures.generate      # clean corpus  -> fixtures/images/ + cases.json
 python -m fixtures.realistic     # realistic corpus (needs system fonts)
 python -m fixtures.boldness      # W-4 calibration corpus
-pytest                           # 309 tests
+pytest                           # 327 tests
 python report.py                 # all gates + the per-field reading table + overlays
 python -m service                # the web app on http://127.0.0.1:8000
 python -m ttbverify --demo brand_mismatch     # single label from the CLI
@@ -1190,7 +1190,7 @@ everything below from scratch.
 | AI | vision fallback (capped at REVIEW), batch triage brief, drafted rejection notices — 2.9 |
 | Interfaces | CLI (`python -m ttbverify`), FastAPI service, React UI (single label **and** batch) |
 | Corpora | clean 17 cases · realistic 16 · W-4 boldness 50 — all with per-field ground truth |
-| Tests | **309**: field-reading 59, AI 40, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, preprocess 16, rules 12, warning 12, pipeline 12, AI cassettes 10, manifest 8, batch API 8, API 8, batch brief 5 |
+| Tests | **327**: field-reading 59, AI 56, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, preprocess 16, pipeline 14, rules 12, warning 12, AI cassettes 10, manifest 8, batch API 8, API 8, batch brief 5 |
 | Gates (all green) | 0 false approvals · 0 expectation mismatches · every field reads its own text · warning recall 1.0 · 0 regular headers auto-PASS W-4 |
 | Latency | clean p50/p95 ~458/463 ms · realistic p95 ~721 ms (budget 5000 ms, N-01) |
 | Review rate | 3.3% (reported, not gated) |
@@ -1264,6 +1264,13 @@ everything below from scratch.
    on `r16_warn_reworded_photo`; cost ~90 ms per image. 248 tests. See 3.9.
 8. **AI wired in per 2.9** — `ttbverify/ai/` replaces the dormant `vlm.py`. Three uses, the
    REVIEW cap, cassette-backed tests, UI attribution. 309 tests.
+9. **First run against a live key** — four things only a real call could surface: nothing
+   read `.env`; the key then loaded but was ignored, because `service/__init__.py` built the
+   app before `__main__` ran; the 3 s vision timeout was wrong (measured 2.4 / 3.2 / 6.8 s,
+   so it failed about half the time); and the model answered `<UNKNOWN>` at 0.1 confidence
+   for fields it couldn't read, which would have reached an agent as a reading. All three
+   uses verified end to end, and **the cap held against a live model at 0.98 confidence**.
+   327 tests.
 
 > **Superseded — do not resurrect.** `ttbverify/vlm.py` and `pipeline._apply_vlm_fallback`.
 > The old fallback ran a model reading through the normalization ladder and let it reach
@@ -1304,6 +1311,16 @@ no socket (the suite itself — `NullAi` is the default everywhere).
 
 - `client.DEFAULT_MODEL = "claude-sonnet-5"`, pinned on purpose. `VISION_TIMEOUT_S = 3.0`
   sits inside the 2.4 latency budget's 2500 ms vision slot with room for the request.
+- `VISION_TIMEOUT_S = 10.0`, raised from 3.0 after measuring the real API (2.4 / 3.2 / 6.8 s
+  on one image). The 2.4 latency table's 2500 ms slot is not achievable; `client.py` states
+  the N-01 tension rather than hiding it. The normal path still makes no model call at all.
+- `vision._MIN_CONFIDENCE = 0.25` plus a `_NOT_A_READING` set. The model returns placeholders
+  like `<UNKNOWN>` rather than null despite the prompt asking for null. Discarding on low
+  confidence is the safe direction and is *not* the mirror of promoting on high confidence.
+- **`.env` is read at the entrypoint only** (`service/__main__.py`), never in `create_app()`,
+  or the suite would pick up a developer's key and start billing. `service/__init__.py` is
+  kept import-free for the same reason — it used to re-export `create_app`, which built the
+  app, and chose `NullAi`, before `__main__` could read the file. A test pins this.
 - `brief.MAX_ITEMS = 60` — enough exceptions to see a pattern, few enough to keep one call
   cheap on a 300-item batch. Past it the brief says it was truncated; the table is complete.
 - **The cassette key covers the prompt, the schema and the image bytes.** That is what makes
