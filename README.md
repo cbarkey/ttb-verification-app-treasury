@@ -41,7 +41,8 @@ every check is `UNREADABLE` and nothing is auto-approved (requirement N-06).
 python -m fixtures.generate           # render the clean 16-label corpus + ground truth
 python -m fixtures.realistic          # (re)render the realistic corpus — needs system fonts
 python -m fixtures.boldness           # (re)render the W-4 boldness calibration corpus
-pytest                                # 171 tests: unit + golden + realistic + boldness + API + batch
+pytest                                # 232 tests: unit + per-field reading + golden +
+                                      #            realistic + boldness + API + batch
 python report.py                      # accuracy + latency for both corpora; review overlays
 ```
 
@@ -109,7 +110,7 @@ Interactive docs at `/docs`. No persistence: sessions are in-memory and TTL-swep
 | Capability | Status |
 |---|---|
 | Brand / class-type matching via the 4-tier normalization ladder | done |
-| Prominence filter so a fine-print brand string isn't a false match (design 3.2) | done |
+| Display admissibility so a fine-print brand string isn't a false match (design 3.2) | done |
 | ABV parsing across label phrasings; proof-vs-ABV (`proof == 2 × ABV`) consistency | done |
 | Net contents with unit normalization (mL / cL / L / fl oz / pt) | done |
 | Health warning W-1 presence, W-2 wording (two-band), W-3 capitalization | done |
@@ -135,11 +136,32 @@ false approvals              0          (gated — must be 0)
 expectation mismatches       0          (every check matches checked-in ground truth)
 warning-statement recall     1.0        (every warning defect fixture is caught)
 latency  p50 / p95           ~410 ms / ~420 ms   (budget 5000 ms, N-01)
-review rate                  2.3%       (reported, not gated; was 9.9% before W-4 auto-confirm)
+review rate                  3.3%       (reported, not gated; was 9.9% before W-4 auto-confirm)
 ```
 
 `report.py` also burns the review-overlay boxes into `out/overlay_*.png` — the same
 `CheckResult.box` coordinates the split-pane review screen draws.
+
+### Per-field reading — the gate that matters most
+
+Outcome strings alone are a weak test. A verdict can be right for the wrong reason: a check
+pointing at another check's line, or a fixture whose brand overflowed the label and was never
+OCR'd at all, both still produce the expected `FAIL`. Both of those actually happened here and
+the outcome gates said nothing.
+
+So every generated case records, per check, **what the label says and which image it says it
+on** (`expect_observed`), and `tests/test_field_reading.py` asserts the pipeline against it —
+28 undegraded labels × 7 categories. Three statuses:
+
+| status | meaning |
+|---|---|
+| `matched` | the observed text matches the label's own text (via the normalization ladder, so OCR noise is tolerated) and came from the expected image |
+| `only_in_fine_print` | the declared value *is* on the label but buried inside a longer statement — must `FAIL`, and the box points at the buried occurrence so the agent can see the decoy (design 3.2) |
+| `not_found` | it isn't on the label. `observed` is `None` — the tool says it didn't find it rather than guessing what the label "probably" says |
+
+Two further guards back this up: the generators run a **corpus audit** after rendering (every
+field the ground truth claims is printed must be legible on that image, or generation fails
+loudly), and a self-test proves the audit actually fires. `report.py` prints the same table.
 
 ### Realistic corpus
 

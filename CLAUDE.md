@@ -928,6 +928,38 @@ image" is already the correct answer; Marcus's firewall breaks cloud VLMs; the l
 budget; auditability. Higher-value future VLM use would be W-4 / residual degradation, not
 general field reading.
 
+**Done: per-field reading tests + display admissibility** (commit `b61e977`). The single
+most important correction so far, and worth reading before touching `rules.py`:
+
+- **The outcome-only tests were the bug.** They asserted verdict strings and nothing else, so
+  two real defects sat there passing: `r05_brand_decoy`'s brand ran off the edge of the label
+  (`Sheet.caps()` centred without a width check, x went negative, Tesseract never saw it) and
+  the brand/class checks were reading each other's lines. Both produced the *expected* verdict
+  for entirely the wrong reason.
+- **Never guess which line is which field.** Two successive attempts did — first by OCR
+  bounding-box height, then by reading position ("first prominent line is the brand"). Box
+  height is font-dependent: Copperplate renders short caps, so a 72px display brand measures a
+  *smaller* box than a 44px Georgia class line. Position assumes a layout. Both are the kind of
+  bet a compliance tool must not make.
+- **What replaced it** (`rules._locate_text`): search every run of words on every page; a
+  display match is admissible only if it covers ≥ `_DISPLAY_MIN_COVERAGE` of its own line
+  (a brand is a line; "Old Tom Distillery" inside a twelve-word bottler sentence is not) and
+  isn't fine print (`_FINE_PRINT_FRACTION` of the page's tallest line). Font-free, layout-free,
+  and it *is* design 3.2's actual signal. Statuses: `matched` / `only_in_fine_print` (FAIL,
+  boxed on the buried occurrence so the agent sees the decoy) / `not_found` (FAIL, `observed`
+  is None — the tool never invents what the label "probably" says).
+- `_rank` breaks ties on *literal* similarity so the producer check boxes the bottler
+  statement, not the brand line, when the distillery is also the brand.
+- **Ground truth gained `expect_observed`** — per case, per check, what the label says and on
+  which image. `tests/test_field_reading.py` asserts it for 28 undegraded labels x 7
+  categories. Degraded (rotation/keystone/low-light) cases are exempt from text assertions but
+  still bound by the no-false-approval gates.
+- **Generators shrink display text to fit** and run `fixtures.audit_corpus()` after rendering:
+  every field the ground truth claims is printed must be legible on that image, or generation
+  exits non-zero. A test proves the audit actually fires. **Any new fixture gets this for
+  free — don't add a corpus without it.**
+- 232 tests. Review rate 3.3%.
+
 **Still to do**, priority order: **degradation-set preprocessing (deskew / perspective
 correction) — the realistic `loose` cases are the fixtures for it** → CI → container +
 deploy. Deploy (with the user): "figure it out with the browser counterpart" — frontend
