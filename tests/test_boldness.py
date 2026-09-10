@@ -89,5 +89,15 @@ def test_decidable_coverage_is_reported(results):
 
 
 def test_adversarial_thin_header_not_passed(results):
+    """The sharpest case: a header set *lighter* than the body it sits in.
+
+    Skipped where the corpus couldn't be built as described — the generator
+    drops cases whose fonts would have silently substituted, because a "thin
+    light header" that resolved to a plain sans face is a different picture
+    making a different claim, and this assertion would then be testing the
+    opposite of what the image shows (`fixtures/boldness.py::_usable`).
+    """
+    if "b_adv_thin_light" not in results:
+        pytest.skip("no genuinely light face on this machine — case not generated")
     _case, outcome, ev = results["b_adv_thin_light"]
     assert outcome.value != "PASS", f"thin header auto-PASSed (ratio {ev.get('weight_ratio')})"

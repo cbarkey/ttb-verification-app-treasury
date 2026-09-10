@@ -130,12 +130,14 @@ def audit_corpus(records: list[dict]) -> list[str]:
         facts = case.get("expect_observed") or {}
         images = case["application"]["images"]
         lines_by_image: dict[int, list[str]] = {}
+        text_by_image: dict[int, str] = {}
         for idx, ref in enumerate(images):
             path = ref["path"]
             if not os.path.isabs(path):
                 path = os.path.join(REPO_ROOT, path)
             page = engine.read(path, idx, ref.get("role"))
             lines_by_image[idx] = [punct_norm(line) for line in page.text.splitlines()]
+            text_by_image[idx] = page.text
 
         for check_id, fact in facts.items():
             if not fact or fact.get("status") != "matched":
@@ -145,9 +147,9 @@ def audit_corpus(records: list[dict]) -> list[str]:
             printed = fact.get("printed") or fact.get("text")
             if not printed:
                 continue
-            want = punct_norm(printed)
             found = any(
-                _legible(check_id, want, lines_by_image.get(idx, []))
+                _legible(check_id, printed, lines_by_image.get(idx, []),
+                         text_by_image.get(idx, ""))
                 for idx in fact.get("images") or [0]
             )
             if not found:
@@ -157,22 +159,48 @@ def audit_corpus(records: list[dict]) -> list[str]:
     return problems
 
 
-def _legible(check_id: str, want: str, lines: list[str]) -> bool:
-    """Is `want` readable on this image *the way its check will look for it*?
+def _legible(check_id: str, printed: str, lines: list[str], page_text: str) -> bool:
+    """Is `printed` readable on this image *the way its check will look for it*?
 
-    Display fields (brand, class/type) must be a line of their own — that is the
-    admissibility rule the engine applies (design 3.2), and auditing anything
-    looser lets a real defect through: a brand clipped off the edge of the label
-    still appears inside the bottler statement further down, so a
-    "is this string anywhere on the image" check passes a label whose brand
-    Tesseract never saw. That is the exact failure this audit exists to catch.
+    Three different questions, because the engine asks three different questions:
 
-    Everything else may sit inside a longer line — a bottler statement is a
-    sentence, and "40% Alc./Vol." is printed inside "40% ALC./VOL. (80 PROOF)".
+    * **Display fields** (brand, class/type) must be a line of their own — the
+      admissibility rule from design 3.2. Auditing anything looser lets a real
+      defect through: a brand clipped off the edge of the label still appears
+      inside the bottler statement further down, so "is this string anywhere on
+      the image" passes a label whose brand Tesseract never saw. That is the
+      exact failure this audit exists to catch.
+
+    * **Numeric fields** go through a *parser*, so the audit has to as well.
+      Requiring the exact string is both too strict and beside the point: on
+      Linux, Tesseract reads the label's `0.75 L` as `0.75L`, which the parser
+      handles perfectly and a string match does not. Asking "can the parser
+      recover this value from this image" is the same question the check asks.
+
+    * **Everything else** may sit inside a longer line — a bottler statement is
+      a sentence.
     """
+    if check_id in ("abv", "proof"):
+        from ttbverify.parsers import parse_abv
+
+        want, got = parse_abv(printed), parse_abv(page_text)
+        field = "proof" if check_id == "proof" else "abv"
+        w, g = getattr(want, field), getattr(got, field)
+        return w is not None and g is not None and abs(w - g) < 0.05
+    if check_id == "net_contents":
+        from ttbverify.parsers import parse_net_contents
+
+        want, got = parse_net_contents(printed), parse_net_contents(page_text)
+        if not want.milliliters or not got.milliliters:
+            return False
+        return abs(want.milliliters - got.milliliters) <= 0.01 * want.milliliters
+
+    from ttbverify.normalize import punct_norm
+
+    want_text = punct_norm(printed)
     if check_id in ("brand", "class_type"):
-        return any(want == line for line in lines)
-    return any(want in line for line in lines)
+        return any(want_text == line for line in lines)
+    return any(want_text in line for line in lines)
 
 
 def load_boldness_cases() -> list[dict]:

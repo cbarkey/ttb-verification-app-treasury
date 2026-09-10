@@ -53,20 +53,31 @@ FAMILIES = {
     "Verdana":   (["verdana.ttf", "DejaVuSans.ttf"], ["verdanab.ttf", "DejaVuSans-Bold.ttf"]),
     "Bookman":   (["BOOKOS.TTF", "DejaVuSerif.ttf"], ["BOOKOSB.TTF", "DejaVuSerif-Bold.ttf"]),
 }
-_HEAVY_DISPLAY = ["LATINWD.TTF", "impact.ttf", "DejaVuSans-Bold.ttf"]
-_THIN_LIGHT = ["COPRGTL.TTF", "calibril.ttf", "DejaVuSans.ttf"]
+# The adversarial faces have **no generic fallback on purpose.** A "thin light
+# header" that quietly resolves to plain DejaVuSans is not a thin light header —
+# on Linux that rendered a *sans* header over a *serif* body, whose stems really
+# are heavier, and the case then asserted the opposite of what it depicted. The
+# fixture must be what it says it is or not exist; see `_usable`.
+_HEAVY_DISPLAY = ["LATINWD.TTF", "impact.ttf", "Impact.ttf"]
+_THIN_LIGHT = ["COPRGTL.TTF", "calibril.ttf"]
 
 _GROUND = (247, 243, 234)
 _INK = (28, 24, 20)
 
 
-def _font(names: list[str], size: int) -> ImageFont.FreeTypeFont:
+def _resolve(names: list[str]) -> str | None:
+    """The first of `names` this machine actually has, or None."""
     for name in names:
         for d in [_FONT_DIR, *_FALLBACK_DIRS]:
             p = os.path.join(d, name)
             if os.path.isfile(p):
-                return ImageFont.truetype(p, size)
-    return ImageFont.load_default(size)
+                return p
+    return None
+
+
+def _font(names: list[str], size: int) -> ImageFont.FreeTypeFont:
+    path = _resolve(names)
+    return ImageFont.truetype(path, size) if path else ImageFont.load_default(size)
 
 
 @dataclass
@@ -80,6 +91,28 @@ class BCase:
     header_fonts: list[str]
     body_fonts: list[str]
     note: str = ""
+    # What has to be true of the *resolved* font files for this case to be the
+    # case it claims to be. Checked structurally, not by measuring pixels —
+    # validating a fixture with the estimator it calibrates would only keep the
+    # cases that estimator already agrees with.
+    require_distinct_faces: bool | None = None   # True: bold != regular file
+    require_header_in: list[str] | None = None   # exact faces, no substitutes
+
+    def unusable_because(self) -> str | None:
+        head, body = _resolve(self.header_fonts), _resolve(self.body_fonts)
+        if head is None or body is None:
+            return "no font on this machine for the header or body role"
+        if self.require_header_in is not None and _resolve(
+                self.require_header_in) != head:
+            return (f"needs one of {self.require_header_in}; this machine has "
+                    f"none of them and substituted {os.path.basename(head)}")
+        if self.require_distinct_faces is True and head == body:
+            return (f"header and body both resolved to {os.path.basename(head)}, "
+                    "so there is no weight difference to detect")
+        if self.require_distinct_faces is False and head != body:
+            return (f"header resolved to {os.path.basename(head)} but the body to "
+                    f"{os.path.basename(body)}; this case needs one face")
+        return None
 
     def _render(self) -> Image.Image:
         W, H = 1000, 560
@@ -159,6 +192,7 @@ def _cases() -> list[BCase]:
                     family=fam, size=size, degraded=degraded,
                     expect_bold=True, grade=grade,
                     header_fonts=bold, body_fonts=reg,
+                    require_distinct_faces=True,
                     note=f"{fam} {size}px header bold, body regular"
                          + (", mild photo" if degraded else ""),
                 ))
@@ -167,6 +201,7 @@ def _cases() -> list[BCase]:
                     family=fam, size=size, degraded=degraded,
                     expect_bold=False, grade=grade,
                     header_fonts=reg, body_fonts=reg,
+                    require_distinct_faces=False,
                     note=f"{fam} {size}px header regular (NOT bold), body regular"
                          + (", mild photo" if degraded else ""),
                 ))
@@ -177,6 +212,7 @@ def _cases() -> list[BCase]:
         case_id="b_adv_heavy_display", family="LatinWide", size=18, degraded=False,
         expect_bold=True, grade="review_ok",
         header_fonts=_HEAVY_DISPLAY, body_fonts=["georgia.ttf", "DejaVuSerif.ttf"],
+        require_header_in=_HEAVY_DISPLAY,
         note="Header in a heavy display face — clearly heavier than the body.",
     ))
     # adversarial: header in a THIN light face, body regular -> header lighter than
@@ -185,14 +221,34 @@ def _cases() -> list[BCase]:
         case_id="b_adv_thin_light", family="Copperplate", size=18, degraded=False,
         expect_bold=False, grade="decidable",
         header_fonts=_THIN_LIGHT, body_fonts=["georgia.ttf", "DejaVuSerif.ttf"],
+        require_header_in=_THIN_LIGHT,
         note="Header in a thin light face — lighter than the body.",
     ))
     return out
 
 
+def _usable(cases: list[BCase]) -> list[BCase]:
+    """Drop cases this machine cannot actually render as described.
+
+    A calibration corpus whose fonts silently substituted is worse than a
+    smaller one: it still renders, still asserts, and now asserts something the
+    picture does not show. On Linux the adversarial faces do not exist, so those
+    two cases are dropped and the rest — real regular/bold pairs — still
+    calibrate the threshold.
+    """
+    keep = []
+    for case in cases:
+        why = case.unusable_because()
+        if why:
+            print(f"  skipping {case.case_id}: {why}")
+        else:
+            keep.append(case)
+    return keep
+
+
 def main() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
-    records = [c.to_record() for c in _cases()]
+    records = [c.to_record() for c in _usable(_cases())]
     with open(CASES_JSON, "w", encoding="utf-8") as fh:
         json.dump(records, fh, indent=2)
         fh.write("\n")
