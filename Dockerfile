@@ -1,11 +1,9 @@
 # TTB label verification prototype — one image, frontend and API together.
 #
-# **Why the filename.** Vercel detects `Dockerfile.vercel` (or
-# `Containerfile.vercel`) at the project root and routes all traffic to the
-# resulting image — for a single service, no `vercel.json` is needed at all. It
-# is the only name it looks for, so this is that file, and there is deliberately
-# no second copy to drift out of sync. Nothing in here is Vercel-specific: any
-# other host builds it with `-f Dockerfile.vercel`.
+# **It must run as one always-on instance.** Session and batch state live in
+# memory — that is what satisfies N-05 — so a second replica means a batch
+# created on one is invisible to a poll that lands on the other. Scale this
+# vertically, not horizontally, until batch state lives in a real store.
 #
 # Two stages: Node builds the React bundle, Python runs the service and serves
 # that bundle as static files. Serving both from one origin is deliberate — it

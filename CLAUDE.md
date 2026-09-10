@@ -1195,7 +1195,7 @@ everything below from scratch.
 | Latency | clean p50/p95 ~458/463 ms · realistic p95 ~721 ms (budget 5000 ms, N-01) |
 | Review rate | 3.3% (reported, not gated) |
 
-**Not built:** the deployment itself. CI and the container exist (`Dockerfile.vercel`, `.github/workflows/ci.yml`); neither has run against a remote yet.
+**Not built:** nothing structural. CI is green on GitHub Actions; the container is deployed to Render as a single always-on instance.
 
 ### Decisions and tunables to preserve
 
@@ -1343,23 +1343,35 @@ deliberately doesn't fire on a FAIL, see 2.9 As built), and `r14_wine_angle`'s w
 wording FAILs because OCR truncates words mid-way on the keystoned back label. Neither is a
 false approval; both are a compliant label sent to a human.
 
-**Deploy: one container to Vercel**, public repo on GitHub, decided with the user.
+**Deploy: one container to Render**, public repo on GitHub, decided with the user.
 
-- `Dockerfile.vercel` is the only build file. That exact name is what Vercel detects at the
-  project root, and a single service needs no `vercel.json` at all. There is deliberately no
-  second copy to drift; nothing in it is Vercel-specific and any other host builds it with
-  `-f Dockerfile.vercel`.
-- **It listens on `$PORT`, defaulting to 80**, because that is Vercel's default — matching it
-  means there is no project setting anyone has to remember. `PORT` is not baked in with `ENV`,
-  which would shadow a platform value. Locally: `docker run -p 8000:80`.
-- The API key is a Vercel project environment variable **scoped to Production only**, so the
-  preview URL created by every push doesn't also carry a live key. The account holds a capped
-  prepaid balance and the key is revoked when the review window closes — spend is bounded by
-  something that cannot be exceeded rather than by a policy. The URL is unauthenticated by
-  design (the brief scopes out auth), so that bound is the control.
+- **One always-on instance, and this is load-bearing.** Session and batch state are in
+  memory — that is what satisfies N-05 — so a second replica makes a batch created on one
+  invisible to a poll landing on the other. Scale vertically until batch state lives in a
+  real store. Render's free tier spins down when idle, which reintroduces the same problem,
+  so the deployment uses a paid always-on instance.
+- **Vercel was tried first and had to be abandoned**, for reasons worth keeping because they
+  are about this design and not about the vendor. Functions cap at 300 s (800 s on Pro); a
+  200-300 label batch runs 5-10 minutes and does not fit. Batch work continues in a
+  background thread after `/start` returns 202, and a function's only supported
+  post-response mechanism is `waitUntil`, still inside the duration budget. And functions
+  autoscale with no sticky routing, so in-memory state is per-instance by definition.
+  Single-label verification was completely fine there; it is the batch path that needs a
+  server. Paying for warm instances does not fix duration or affinity.
+- **`Dockerfile`, the conventional name.** It was briefly `Dockerfile.vercel` (the only name
+  Vercel detects); renamed on the move, since every other host auto-detects the standard one.
+- **The OCR pool sizes itself from the cgroup CPU quota**, not `os.cpu_count()` — which in a
+  container reports the *host's* cores, so a 1-vCPU instance on a 32-core box claims 32. It
+  was hardcoded to 4, meaning four tesseract processes on one core and 4x peak memory, a
+  good way to be OOM-killed mid-batch. `TTB_BATCH_WORKERS` overrides it.
+- The API key is a platform environment variable, never in the image. The account holds a
+  capped prepaid balance with auto-reload off, and the key is revoked when the review window
+  closes — spend is bounded by something that cannot be exceeded rather than by a policy.
+  The URL is unauthenticated by design (the brief scopes out auth), so that bound is the
+  control.
 - Azure Container Apps is the natural fit for TTB's real infrastructure and was deliberately
-  not used: deploy-platform choice isn't in the evaluation criteria. The image is portable and
-  the README says so in one line rather than pretending it was tested there.
+  not used: deploy-platform choice isn't in the evaluation criteria. The image is portable
+  and the README says so in one line rather than pretending it was tested there.
 
 **Verified locally** against the built image: the `PORT` override is honoured (`-e PORT=9000`),
 the default path with no `PORT` set serves on 80 — which is what Vercel will do — the SPA and

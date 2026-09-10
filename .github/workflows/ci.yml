@@ -125,7 +125,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the image
-        run: docker build -f Dockerfile.vercel -t ttbverify:ci .
+        run: docker build -t ttbverify:ci .
 
       - name: Start it on a non-default port
         # Also proves the $PORT override works, which is how the deploy target

@@ -35,8 +35,65 @@ from ttbverify.pipeline import verify
 
 _CTYPE = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
           ".webp": "image/webp", ".tif": "image/tiff", ".tiff": "image/tiff"}
-_MAX_WORKERS = 4
 _PER_LABEL_TIMEOUT_MS = 5000.0
+# Never more than this even on a big host: past a handful of concurrent
+# tesseract processes the bottleneck is memory and disk, not cores.
+_WORKER_CEILING = 4
+
+
+def _available_cpus() -> float:
+    """How many CPUs this process may actually use.
+
+    **Not `os.cpu_count()`.** In a container that reports the *host's* core
+    count, not the quota the container was given — so on a 1-vCPU instance of a
+    32-core machine it says 32. This function reads the cgroup quota first and
+    only falls back to the host count.
+    """
+    for path, parse in (
+        # cgroup v2: "max 100000" (unlimited) or "50000 100000" (half a core)
+        ("/sys/fs/cgroup/cpu.max", lambda t: None if t.split()[0] == "max"
+         else float(t.split()[0]) / float(t.split()[1])),
+        # cgroup v1: quota and period in separate files
+        ("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", lambda t: None if int(t) <= 0
+         else int(t) / _read_int("/sys/fs/cgroup/cpu/cpu.cfs_period_us", 100000)),
+    ):
+        try:
+            with open(path) as fh:
+                quota = parse(fh.read().strip())
+            if quota:
+                return quota
+        except (OSError, ValueError, ZeroDivisionError, IndexError):
+            continue
+    return float(os.cpu_count() or 1)
+
+
+def _read_int(path: str, default: int) -> int:
+    try:
+        with open(path) as fh:
+            return int(fh.read().strip()) or default
+    except (OSError, ValueError):
+        return default
+
+
+def batch_workers() -> int:
+    """Size the OCR pool to the machine, not to the developer's laptop.
+
+    This was hardcoded to 4, which is a laptop assumption. OCR is CPU-bound and
+    each worker shells out to a separate `tesseract` process, so on a 1-vCPU
+    instance four workers do not go four times faster — they contend for one
+    core and multiply peak memory by four, which on a 2 GB box is a plausible
+    way to get OOM-killed mid-batch.
+
+    `TTB_BATCH_WORKERS` overrides it, so a deployment can be tuned without a
+    code change.
+    """
+    override = os.environ.get("TTB_BATCH_WORKERS")
+    if override:
+        try:
+            return max(1, int(override))
+        except ValueError:
+            pass
+    return max(1, min(_WORKER_CEILING, int(_available_cpus())))
 
 
 def make_batch_router(*, ocr, ai) -> APIRouter:
@@ -60,7 +117,7 @@ def make_batch_router(*, ocr, ai) -> APIRouter:
     def _process(batch: Batch) -> None:
         batch.state = "running"
         batch.started_at = time.time()
-        with ThreadPoolExecutor(max_workers=_MAX_WORKERS,
+        with ThreadPoolExecutor(max_workers=batch_workers(),
                                 thread_name_prefix="verify") as pool:
             futs = [pool.submit(_verify_row, r) for r in batch.processable]
             for _ in as_completed(futs):

@@ -131,14 +131,12 @@ python -m service                     # http://127.0.0.1:8000
 Or the whole thing in one container, which is what gets deployed:
 
 ```bash
-docker build -f Dockerfile.vercel -t ttbverify .
+docker build -t ttbverify .
 docker run --rm -p 8000:80 ttbverify        # http://127.0.0.1:8000
 ```
 
-The file is named `Dockerfile.vercel` because that is the only name Vercel looks
-for; there is deliberately no second copy to drift out of sync, and nothing in it
-is Vercel-specific. It listens on `$PORT`, defaulting to 80 to match the
-platform, so nothing has to be configured for it to deploy.
+It listens on `$PORT`, defaulting to 80, which is what container hosts set — so
+there is nothing to configure for it to deploy.
 
 One process serves the API and the built React bundle from the same origin — one URL, no
 CORS, nothing to configure. Add `-e ANTHROPIC_API_KEY=...` to enable the AI features.
@@ -346,11 +344,38 @@ interface (`ttbverify/ocr.py`) is where an alternative engine drops in.
 One container serves the API and the built frontend from a single origin — one URL for TTB
 to open, no CORS, no second service to keep in step.
 
-**Target: Vercel**, using container-image support rather than serverless functions. The OCR
-engine is a system binary installed with `apt-get`, which a plain serverless function can't
-provide. Vercel auto-detects `Dockerfile.vercel` at the project root and routes all traffic
-to the image, so this needs no `vercel.json` — the only configuration is the API key, set as
-a project environment variable scoped to Production.
+**Target: Render**, as a single always-on Docker web service. The OCR engine is a system
+binary installed with `apt-get`, which rules out a plain serverless function, and the batch
+pipeline needs a process that outlives a request.
+
+**It must run as exactly one always-on instance.** That is not incidental — session and
+batch state live in memory, which is what satisfies N-05 (no storage of uploaded images or
+application data beyond the session) and keeps this prototype out of the retention and PII
+conversation entirely. A second replica would mean a batch created on one instance is
+invisible to a poll that lands on the other. The price of not having a database is that this
+scales by vertical size, not by replica count, which is the right trade for a prototype and
+the wrong one for production. A production version would put batch state in a real store,
+and that is the point at which the horizontal story changes.
+
+### Why not serverless — a specific finding, not a preference
+
+The first deployment went to Vercel's container-image support and had to be moved. It is
+worth writing down what actually failed, because it is a real constraint on this design
+rather than a platform complaint:
+
+- **Max duration.** Vercel Functions cap at 300 s by default and 800 s on Pro. A 200–300
+  label batch — the requirement, straight out of Sarah Chen's interview (F-05) — runs for
+  5–10 minutes on a small instance. It doesn't fit under the ceiling.
+- **Batch processing outlives its request.** `POST /verify/batch/{id}/start` returns `202`
+  immediately and work continues in a background thread. A function's supported mechanism
+  for post-response work is `waitUntil`, which still runs inside the duration budget; a bare
+  background thread has no execution guarantee at all.
+- **No instance affinity.** Functions scale up under load with no sticky routing, so
+  in-memory batch state is per-instance by definition.
+
+Single-label verification is completely fine on that model — one request, sub-second, no
+shared state. It is specifically the batch path that needs a server, and that is what made
+the choice.
 
 **Azure Container Apps was considered and deliberately not used.** It is the natural fit for
 TTB's real infrastructure (Marcus Williams' interview: "we're on Azure now"), and the design
@@ -359,19 +384,34 @@ evaluation criteria, and learning unfamiliar cloud tooling under a time box is a
 against the work that *is* graded. **The container is portable** — the same image runs on
 Azure Container Apps, Render or Fly with no code changes, only different platform config.
 
-Known trade-offs, stated rather than discovered:
+### Sizing
 
-- **Cold starts.** Idle instances scale to zero after 5 minutes in production (30 seconds on
-  preview deployments), so the first request after a gap pays a cold start. Worth naming
-  explicitly in a project whose central claim is a 5-second budget: N-01 is about per-label
-  processing time, and a cold start is a platform artifact on top of it, not the pipeline
-  being slow.
+The batch OCR pool sizes itself to the machine rather than to a constant. `os.cpu_count()`
+is the wrong signal in a container — it reports the *host's* cores, so a 1-vCPU instance on a
+32-core box claims 32 — so `service/routes_batch.py` reads the cgroup CPU quota instead.
+Verified: `--cpus=0.5` and `--cpus=1.0` both give one worker, `--cpus=2.0` gives two.
+
+This was a real bug. The pool was hardcoded to four workers, which on a 1-vCPU instance
+means four `tesseract` processes contending for one core and four times the peak memory —
+a good way to get OOM-killed part-way through a batch. `TTB_BATCH_WORKERS` overrides the
+calculation if a deployment needs tuning without a code change.
+
+At one vCPU, expect roughly 1–2 s per label, so a 300-label batch is 5–10 minutes. N-02's
+"2 labels/sec" target needs more cores; it is a throughput claim about the pipeline, not
+about the smallest instance it will run on.
+
+### Known trade-offs, stated rather than discovered
+
 - **No authentication.** This is a standalone prototype with no COLA integration, no accounts
   and no persistence, exactly as scoped. Anyone with the URL can use it — including the AI
   features, which cost money. The deployed instance therefore runs on a capped, disposable
   API key that is revoked once the review window closes.
-- **Static IPs / Secure Compute** aren't available for custom container images on Vercel.
-  Irrelevant here: nothing in this system needs an allowlisted outbound IP.
+- **One instance means one point of failure.** A restart drops in-flight batches and every
+  session, by design (N-05). Re-upload and re-run is the recovery, which is acceptable for a
+  prototype and would not be for production.
+- **Cold start on a free tier.** Render's free instances spin down when idle, which
+  reintroduces exactly the scale-to-zero problem described above; the deployment uses a paid
+  always-on instance instead.
 
 ## Known limitations
 
@@ -442,5 +482,5 @@ scripts/
   record_cassettes.py  re-record the cassettes against the live API
 tests/            unit · per-field reading · golden · realistic · boldness · AI · API · batch
 report.py         accuracy + latency for both corpora; renders review-overlay PNGs
-Dockerfile.vercel one image: builds the frontend, installs Tesseract, serves both
+Dockerfile        one image: builds the frontend, installs Tesseract, serves both
 ```
