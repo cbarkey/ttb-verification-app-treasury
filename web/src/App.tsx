@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  draftBatchNotice,
+  draftNotice,
   finalize,
   finalizeBatchRow,
   getBatchRow,
+  getHealth,
   getSession,
   recordBatchDecision,
   recordDecision,
@@ -50,6 +53,16 @@ type View =
 
 export function App() {
   const [view, setView] = useState<View>({ name: "home" });
+
+  // Whether a model is configured at all. Drives the "Draft notice" action:
+  // showing a button that can only 503 behind Marcus's firewall would be worse
+  // than not showing it (N-06 — no model is a normal state, not an error).
+  const [aiReady, setAiReady] = useState(false);
+  useEffect(() => {
+    getHealth()
+      .then((h) => setAiReady(h.ai === "available"))
+      .catch(() => setAiReady(false));
+  }, []);
 
   const openBatchRow = async (batchId: string, queue: string[], serial: string) => {
     const row = await getBatchRow(batchId, serial);
@@ -105,6 +118,9 @@ export function App() {
         {view.name === "review" && (
           <ReviewScreen
             data={view.session}
+            onDraftNotice={
+              aiReady ? () => draftNotice(view.session.session_id) : undefined
+            }
             onDecide={(cid, d) => recordDecision(view.session.session_id, cid, d)}
             onFinalize={async (action) =>
               setView({
@@ -147,6 +163,11 @@ export function App() {
             key={view.row.serial_number}
             data={toReviewData(view.row)}
             title={`Serial ${view.row.serial_number}`}
+            onDraftNotice={
+              aiReady
+                ? () => draftBatchNotice(view.batchId, view.row.serial_number)
+                : undefined
+            }
             nav={{
               index: view.queue.indexOf(view.row.serial_number),
               total: view.queue.length,

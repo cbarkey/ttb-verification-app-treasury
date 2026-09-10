@@ -70,7 +70,7 @@ def build_ok() -> None:
     for case_id, serial in picks:
         app = apps[case_id]
         names = []
-        for i, ref in enumerate(app["images"]):
+        for _i, ref in enumerate(app["images"]):
             base = os.path.basename(ref["path"])
             names.append(base)
             files[base] = _img(ref["path"])
@@ -86,7 +86,7 @@ def build_issues() -> None:
     apps = _realistic()
     ok = apps["r01_whiskey_clean"]
     ok_names = [os.path.basename(r["path"]) for r in ok["images"]]
-    files = {n: _img(r["path"]) for n, r in zip(ok_names, ok["images"])}
+    files = {n: _img(r["path"]) for n, r in zip(ok_names, ok["images"], strict=False)}
     files["leftover_neck.png"] = _img(apps["r03_gin_single"]["images"][0]["path"])  # orphan
 
     rows = [

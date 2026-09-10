@@ -22,9 +22,11 @@ Run:  python -m fixtures.realistic
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -265,14 +267,14 @@ class Sheet:
                 extra = slack / (len(line) - 1)
             cx = x
             asc, desc = line[0][1].getmetrics()
-            for (w, f), ww in zip(line, widths):
+            for (w, f), ww in zip(line, widths, strict=False):
                 self.d.text((cx, yy), w, font=f, fill=fill)
                 cx += ww + sp + extra
             max_x = max(max_x, cx - sp - extra)
             yy += asc + desc + 4
 
         for w, f in words:
-            probe = line + [(w, f)]
+            probe = [*line, (w, f)]
             tw = sum(self.d.textlength(x2, font=f2) for x2, f2 in probe)
             tw += self.d.textlength(" ", font=f) * (len(probe) - 1)
             if line and tw > width:
@@ -337,10 +339,10 @@ def _perspective(img: Image.Image, k: float) -> Image.Image:
 def degrade(img: Image.Image, *, rotate=0.0, blur=0.0, vignette=0.0, jpeg=0,
             perspective=0.0) -> tuple[Image.Image, str]:
     if perspective:
-        try:
+        # A degenerate quad just means "no keystone on this one"; the fixture is
+        # still a valid test of everything else.
+        with contextlib.suppress(Exception):
             img = _perspective(img, perspective)
-        except Exception:
-            pass
     if rotate:
         img = img.rotate(rotate, resample=Image.BICUBIC, expand=False,
                          fillcolor=(232, 224, 208))
@@ -456,7 +458,7 @@ class RCase:
             self._warning_onto(s, top=1300)
         return s.img
 
-    _BLURB = {
+    _BLURB: ClassVar[dict[str, str]] = {
         "wine": "Grown on south-facing slopes and aged in French oak, this wine "
                 "shows dark fruit and a long, savoury finish. Unfined. "
                 "Enjoy responsibly.",
@@ -539,11 +541,15 @@ class RCase:
         from fixtures import numeric_facts, text_fact
 
         front = 0
+        # The back label repeats the brand as a heading (see `_back`), so the
+        # brand is printed on both images — pinning index 0 would fail a check
+        # that read the back copy, which is a real display line.
+        brand_on = [front] if self.single_image else [front, 1]
         printed_abv = self.label_abv_line or self.alcohol_content
         printed_net = self.label_net or self.net_contents
         facts = {
             "brand": text_fact(self.brand, self.label_brand or self.brand,
-                               front, self._fine_print),
+                               brand_on, self._fine_print),
             "class_type": text_fact(self.class_type, self.class_type, front),
             "producer": text_fact(self.applicant_name, self.applicant_name, front),
             "origin": text_fact(
@@ -724,7 +730,7 @@ def _cases() -> list[RCase]:
         alcohol_content="45% Alc./Vol.", net_contents="750 mL",
         applicant_name="Old Tom Distillery, LLC", applicant_address="Bardstown, KY",
         origin=None, label_abv_line="45% ALC./VOL. (90 PROOF)",
-        degrade=dict(rotate=2.4, blur=0.7, vignette=0.28, jpeg=72),
+        degrade={"rotate": 2.4, "blur": 0.7, "vignette": 0.28, "jpeg": 72},
         expect=dict(_ALL_PASS),
         note="r01 shot as a photo. Should still read; a clean field slipping to "
              "REVIEW is tolerated, PASS on a defect is not.",
@@ -738,7 +744,7 @@ def _cases() -> list[RCase]:
         applicant_name="Rusty Anchor Spirits", applicant_address="Key West, FL",
         origin=None, label_abv_line="40% ALC./VOL. (80 PROOF)",
         warning_style="boxed",
-        degrade=dict(rotate=-1.6, blur=1.1, vignette=0.5, jpeg=55),
+        degrade={"rotate": -1.6, "blur": 1.1, "vignette": 0.5, "jpeg": 55},
         expect=dict(_ALL_PASS),
         note="Dark theme + low light. Fields may go UNREADABLE/REVIEW; nothing "
              "unverified may read PASS.",
@@ -767,7 +773,7 @@ def _cases() -> list[RCase]:
         applicant_name="Dubois Imports", applicant_address="New York, NY",
         origin="France", label_origin_text="Product of France",
         warning_style="boxed",
-        degrade=dict(perspective=0.12, rotate=1.2, vignette=0.22, jpeg=78),
+        degrade={"perspective": 0.12, "rotate": 1.2, "vignette": 0.22, "jpeg": 78},
         expect={**_ALL_PASS, "proof": "MISSING", "origin": "PASS"},
         note="Shot at an angle. Keystoned text; tests location robustness.",
     ))
@@ -780,7 +786,7 @@ def _cases() -> list[RCase]:
         alcohol_content="45% Alc./Vol.", net_contents="750 mL",
         applicant_name="Old Tom Distillery, LLC", applicant_address="Bardstown, KY",
         origin=None, label_abv_line="41% ALC./VOL. (82 PROOF)",
-        degrade=dict(rotate=1.8, blur=0.6, vignette=0.3, jpeg=70),
+        degrade={"rotate": 1.8, "blur": 0.6, "vignette": 0.3, "jpeg": 70},
         expect={**_ALL_PASS, "abv": "FAIL"},
         note="Declared 45%, label 41%, shot as a photo. The mismatch must survive "
              "the degradation — FAIL (or at worst REVIEW/UNREADABLE), never PASS.",
@@ -795,7 +801,7 @@ def _cases() -> list[RCase]:
         applicant_name="Old Tom Distillery, LLC", applicant_address="Bardstown, KY",
         origin=None, label_abv_line="45% ALC./VOL. (90 PROOF)",
         warning_mode="reworded", warning_style="boxed",
-        degrade=dict(rotate=-1.0, blur=0.5, vignette=0.2, jpeg=76),
+        degrade={"rotate": -1.0, "blur": 0.5, "vignette": 0.2, "jpeg": 76},
         expect={**_ALL_PASS, "warn_text": "FAIL"},
         note="'operate a boat' rewording on a mild photo. warn_text must not PASS.",
     ))

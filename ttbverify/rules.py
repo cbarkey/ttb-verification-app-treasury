@@ -20,7 +20,6 @@ Two design points enforced here:
 from __future__ import annotations
 
 import re
-
 from dataclasses import dataclass
 
 from ttbverify.models import (
@@ -100,17 +99,25 @@ _OUTCOME_ORDER = {Outcome.PASS: 3, Outcome.REVIEW: 2, Outcome.FAIL: 1}
 
 
 def _rank(m: MatchResult, declared: str = "", observed: str = "") -> tuple[float, ...]:
-    """Order candidate matches: outcome first, then how well they matched.
+    """Order candidate matches: outcome first, then *literal* similarity.
 
-    The last key is *literal* similarity, before normalization. It only breaks
-    ties — when the same value appears twice and both normalize to a match, take
-    the more literal one. On a label whose distillery is also its brand, that
-    points the producer check at "Old Tom Distillery, LLC" in the bottler
-    statement rather than at "OLD TOM DISTILLERY" in the display type, which is
-    the occurrence an agent actually wants boxed.
+    When a value appears more than once on a label and every occurrence
+    normalizes to a match, the one worth boxing for the agent is the one printed
+    the way the application declared it. On a label whose distillery is also its
+    brand, that points the producer check at "Stonebridge Cellars" in the bottler
+    statement rather than at "STONEBRIDGE CELLARS" in the display type.
+
+    **Two things here were wrong and are worth not re-breaking.** The literal key
+    used to casefold both sides — which erases precisely the signal it exists to
+    read, so a case-only difference left the tie unbroken. And it sat *below* the
+    post-normalization similarity, which for two passing candidates is ~1.0 for
+    both and differs only on noise: a stray comma in "Stonebridge Cellars," was
+    enough to score the bottler statement below a display heading on another
+    page and hand the producer check the wrong box. Normalized similarity is now
+    the last resort, which is all it was ever good for.
     """
-    literal = similarity(declared.casefold(), observed.casefold()) if declared else 0.0
-    return (_OUTCOME_ORDER[m.outcome], m.similarity, literal)
+    literal = similarity(declared, observed) if declared else 0.0
+    return (_OUTCOME_ORDER[m.outcome], literal, m.similarity)
 
 
 @dataclass
@@ -288,8 +295,8 @@ def _text_field_check(
         return CheckResult(check_id, label, Outcome.UNREADABLE, declared=declared,
                            detail="Nothing readable on the submitted image(s).")
 
-    common = dict(declared=declared, box=loc.box,
-                  image_index=loc.page_index, image_role=loc.page_role)
+    common = {"declared": declared, "box": loc.box,
+                  "image_index": loc.page_index, "image_role": loc.page_role}
 
     if loc.status == "not_found":
         # No guessing: we don't claim to know what the label calls this field,
@@ -325,7 +332,7 @@ def _abv_check(app: LabelApplication, pages: list[OcrPage]) -> list[CheckResult]
     text = _full_text(pages)
     label_reading = parse_abv(text)
     box, pidx, prole, _ = _locate_pattern(pages, _ABV_TOKEN)
-    common = dict(image_index=pidx, image_role=prole, box=box)
+    common = {"image_index": pidx, "image_role": prole, "box": box}
     checks: list[CheckResult] = []
 
     # --- alcohol content ---
@@ -364,7 +371,7 @@ def _abv_check(app: LabelApplication, pages: list[OcrPage]) -> list[CheckResult]
     # --- proof / ABV consistency (only when proof is printed on the label) ---
     if label_reading.proof is not None:
         pbox, ppidx, pprole, _ = _locate_pattern(pages, _PROOF_TOKEN)
-        pcommon = dict(image_index=ppidx, image_role=pprole, box=pbox)
+        pcommon = {"image_index": ppidx, "image_role": pprole, "box": pbox}
         if label_reading.abv is None:
             checks.append(CheckResult("proof", "Proof / ABV consistency", Outcome.REVIEW,
                                       observed=f"{label_reading.proof:g} proof", **pcommon,
@@ -394,7 +401,7 @@ def _net_contents_check(app: LabelApplication, pages: list[OcrPage]) -> CheckRes
     declared = parse_net_contents(app.net_contents)
     label = parse_net_contents(_full_text(pages))
     box, pidx, prole, _ = _locate_pattern(pages, _NET_UNIT)
-    common = dict(image_index=pidx, image_role=prole, box=box)
+    common = {"image_index": pidx, "image_role": prole, "box": box}
 
     if declared.milliliters is None:
         return CheckResult("net_contents", "Net contents", Outcome.REVIEW,
@@ -416,7 +423,8 @@ def _net_contents_check(app: LabelApplication, pages: list[OcrPage]) -> CheckRes
         detail = f"Declared {declared_str}, label reads {label_str} - close, needs review."
     else:
         outcome = Outcome.FAIL
-        detail = f"Declared {declared_str} ({declared.milliliters:g} mL), label reads {label_str} ({label.milliliters:g} mL)."
+        detail = (f"Declared {declared_str} ({declared.milliliters:g} mL), "
+                  f"label reads {label_str} ({label.milliliters:g} mL).")
     return CheckResult("net_contents", "Net contents", outcome,
                        declared=declared_str, observed=label_str, **common,
                        detail=detail,

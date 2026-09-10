@@ -7,13 +7,13 @@ from ttbverify.rules import evaluate
 
 
 def _app(**overrides) -> LabelApplication:
-    base = dict(
-        serial_number="1", brand_name="OLD TOM DISTILLERY",
-        class_type="Kentucky Straight Bourbon Whiskey", commodity=Commodity.SPIRITS,
-        alcohol_content="45% Alc./Vol.", net_contents="750 mL",
-        applicant_name="Old Tom Distillery, LLC", origin=None,
-        images=[{"path": "x.png", "role": "front"}],
-    )
+    base = {
+        "serial_number": "1", "brand_name": "OLD TOM DISTILLERY",
+        "class_type": "Kentucky Straight Bourbon Whiskey", "commodity": Commodity.SPIRITS,
+        "alcohol_content": "45% Alc./Vol.", "net_contents": "750 mL",
+        "applicant_name": "Old Tom Distillery, LLC", "origin": None,
+        "images": [{"path": "x.png", "role": "front"}],
+    }
     base.update(overrides)
     return LabelApplication(**base)
 
@@ -35,7 +35,7 @@ class TestProminenceFilter:
         from ttbverify.ocr import OcrWord
         y = max(w.box.bottom for w in page.words) + 20
         x = 40
-        for tok in "Distilled by Old Tom Distillery Bardstown KY".split():
+        for tok in ["Distilled", "by", "Old", "Tom", "Distillery", "Bardstown", "KY"]:
             page.words.append(OcrWord(tok, 95.0, BoundingBox(x, y, 8 * len(tok), 8),
                                       line=9, block=2, par=1))
             x += 8 * len(tok) + 6

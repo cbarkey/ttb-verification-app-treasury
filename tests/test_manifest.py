@@ -10,10 +10,11 @@ from service.manifest import (
 )
 
 _GOOD = (
-    "serial_number,brand_name,class_type,commodity,alcohol_content,net_contents,image_files\n"
-    "100001,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,spirits,45% Alc./Vol.,750 mL,f1.jpg;b1.jpg\n"
-    "100002,STONEBRIDGE CELLARS,California Chardonnay,wine,13% Alc./Vol.,750 mL,f2.jpg\n"
-).encode()
+    b"serial_number,brand_name,class_type,commodity,alcohol_content,net_contents,image_files\n"
+    b"100001,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,spirits,"
+    b"45% Alc./Vol.,750 mL,f1.jpg;b1.jpg\n"
+    b"100002,STONEBRIDGE CELLARS,California Chardonnay,wine,13% Alc./Vol.,750 mL,f2.jpg\n"
+)
 
 
 def test_parses_rows_and_splits_image_files():
@@ -35,9 +36,9 @@ def test_missing_required_column_is_reported():
 
 def test_bad_commodity_and_empty_fields_flag_the_row():
     csv = (
-        "serial_number,brand_name,class_type,commodity,image_files\n"
-        "100003,,Some Type,fizzy,f3.jpg\n"
-    ).encode()
+        b"serial_number,brand_name,class_type,commodity,image_files\n"
+        b"100003,,Some Type,fizzy,f3.jpg\n"
+    )
     rows, missing = parse_manifest(csv)
     assert missing == []
     assert not rows[0].ok
@@ -65,9 +66,9 @@ def test_reconcile_flags_duplicate_serials():
 
 def test_reconcile_flags_unparseable_declared_values():
     csv = (
-        "serial_number,brand_name,class_type,commodity,alcohol_content,net_contents,image_files\n"
-        "100010,BRAND,Type,spirits,TBD,a jug,f.jpg\n"
-    ).encode()
+        b"serial_number,brand_name,class_type,commodity,alcohol_content,net_contents,image_files\n"
+        b"100010,BRAND,Type,spirits,TBD,a jug,f.jpg\n"
+    )
     rows, _ = parse_manifest(csv)
     report = reconcile(rows, ["f.jpg"])
     fields = {u["field"] for u in report.unparseable_values}

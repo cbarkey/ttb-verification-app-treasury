@@ -79,8 +79,25 @@ class SessionResponse(BaseModel):
     finalized: str | None
 
 
+class NoticeResponse(BaseModel):
+    """A drafted rejection notice (2.9 use C). Always labelled generated."""
+
+    subject: str
+    body: str
+    items: list[str]
+    model: str
+    generated: bool
+    advisory: bool
+
+
 class HealthResponse(BaseModel):
     status: str
     ocr: str
     ocr_engine: str
     active_sessions: int
+    # Whether a model is configured at all. "unavailable" is the normal state
+    # behind a firewall and is not an error (N-06) — the UI says so plainly
+    # rather than hiding it.
+    ai: str
+    ai_model: str | None = None
+    ai_unavailable_reason: str | None = None

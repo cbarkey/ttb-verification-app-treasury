@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { finalize } from "../api";
+import { VisionBadge, isFromModel } from "../components/AiLabel";
 import { OUTCOME_STYLE } from "../outcome";
 import type { SessionState } from "../types";
 
@@ -26,6 +27,10 @@ export function ResultScreen({ session, onReview, onFinalized }: Props) {
       : result.verdict === "UNREADABLE"
         ? "unreadable"
         : "attention";
+
+  // 2.9: the result screen says when a model was consulted at all, before the
+  // agent opens the review. Being told after the fact is not attribution.
+  const modelRead = result.checks.filter(isFromModel);
 
   const act = async (action: "approve" | "request_image") => {
     setBusy(true);
@@ -70,15 +75,37 @@ export function ResultScreen({ session, onReview, onFinalized }: Props) {
           )}
         </div>
 
-        {kind === "clean" && (
+        {kind !== "attention" && (
           <button
             onClick={onReview}
             className="mt-3 text-sm text-zinc-500 hover:text-zinc-800 underline underline-offset-2"
           >
-            See the checks first
+            {/* An unreadable label used to be a dead end. Now that a vision
+                model can offer readings for exactly those fields, the agent
+                needs a way in to confirm them (2.9 use A). */}
+            {modelRead.length > 0
+              ? "See what the model read"
+              : "See the checks first"}
           </button>
         )}
       </div>
+
+      {modelRead.length > 0 && (
+        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-950">
+          <p>
+            OCR couldn&rsquo;t read{" "}
+            {modelRead.length === 1
+              ? "one field"
+              : `${modelRead.length} fields`}{" "}
+            on this label, so a vision model was asked what it says:{" "}
+            <span className="font-medium">
+              {modelRead.map((c) => c.field_label).join(", ")}
+            </span>
+            . Those readings need your confirmation — a model reading is never
+            approved automatically.
+          </p>
+        </div>
+      )}
 
       <ul className="mt-6 divide-y divide-zinc-100 rounded-xl bg-white border border-zinc-200">
         {result.checks.map((c) => (
@@ -87,6 +114,7 @@ export function ResultScreen({ session, onReview, onFinalized }: Props) {
               className={`h-2.5 w-2.5 rounded-full shrink-0 ${OUTCOME_STYLE[c.outcome].dot}`}
             />
             <span className="font-medium text-zinc-800">{c.field_label}</span>
+            {isFromModel(c) && <VisionBadge check={c} compact />}
             <span
               className={`ml-auto text-sm rounded-full border px-2.5 py-0.5 ${OUTCOME_STYLE[c.outcome].chip}`}
             >

@@ -26,6 +26,8 @@ Needs the tesseract binary; skipped without it.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 from fixtures import load_cases, load_realistic_cases
@@ -41,10 +43,8 @@ TEXT_FIELDS = ("brand", "class_type", "producer", "origin")
 def _all_cases() -> list[dict]:
     out: list[dict] = []
     for loader in (load_cases, load_realistic_cases):
-        try:
+        with contextlib.suppress(FileNotFoundError):  # corpus not generated yet
             out.extend(loader())
-        except FileNotFoundError:  # corpus not generated yet
-            pass
     return [c for c in out if not c.get("degraded")]
 
 
@@ -89,9 +89,13 @@ def _check_fact(check, fact) -> list[str]:
         return problems
     if compare(fact["text"], check.observed).outcome is not Outcome.PASS:
         problems.append(f"read {check.observed!r}, but the label says {fact['text']!r}")
-    if fact.get("image") is not None and check.image_index != fact["image"]:
+    # The image is asserted against every image the label prints this value on,
+    # not just the first — a brand repeated as a heading on the back label is
+    # genuinely readable from either (see `fixtures.text_fact`).
+    where = fact.get("images")
+    if where and check.image_index not in where:
         problems.append(f"read from image {check.image_index}, "
-                        f"expected image {fact['image']}")
+                        f"expected one of {where}")
     return problems
 
 
@@ -157,7 +161,7 @@ def test_the_corpus_audit_catches_an_illegible_field(tesseract_or_skip):
         "application": real["application"],
         "expect_observed": {
             "brand": {"status": "matched", "text": "TEXT THAT IS NOT ON THIS LABEL",
-                      "printed": "TEXT THAT IS NOT ON THIS LABEL", "image": 0},
+                      "printed": "TEXT THAT IS NOT ON THIS LABEL", "images": [0]},
         },
     }
     problems = audit_corpus([bogus])
@@ -165,6 +169,35 @@ def test_the_corpus_audit_catches_an_illegible_field(tesseract_or_skip):
 
     # ...and stays quiet on a label that really does print what it claims
     assert audit_corpus([real]) == []
+
+
+def test_the_corpus_audit_is_not_satisfied_by_fine_print(tesseract_or_skip):
+    """The hole the first version of this audit had, and the reason it exists.
+
+    `brand_mismatch` plants the declared brand inside the bottler statement while
+    the label's actual display brand is something else. An audit that asks "is
+    this string anywhere in the image's text" is happy with that — which is
+    exactly the state a brand clipped off the edge of the label leaves behind, so
+    the audit would have gone on passing the very defect it was written for. A
+    display field has to be legible as a *line*.
+    """
+    from fixtures import audit_corpus
+
+    decoy = next(c for c in load_cases() if c["case_id"] == "brand_mismatch")
+    declared = decoy["application"]["brand_name"]
+    bogus = {
+        "case_id": "synthetic_fineprint_only",
+        "degraded": False,
+        "application": decoy["application"],
+        # Claim the declared brand is the display brand. It is not — it appears
+        # only inside the bottler statement.
+        "expect_observed": {
+            "brand": {"status": "matched", "text": declared, "printed": declared,
+                      "images": [0]},
+        },
+    }
+    problems = audit_corpus([bogus])
+    assert problems and "brand" in problems[0]
 
 
 def test_a_declared_brand_hidden_in_fine_print_is_never_approved(results):

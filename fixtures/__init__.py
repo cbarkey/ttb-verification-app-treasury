@@ -48,9 +48,16 @@ def load_realistic_cases() -> list[dict]:
 # it on. `tests/test_field_reading.py` asserts against this.
 # --------------------------------------------------------------------------
 
-def text_fact(declared: str | None, printed: str | None, image: int,
+def text_fact(declared: str | None, printed: str | None, images: int | list[int],
               fine_print: str | None = None) -> dict | None:
     """Expected reading of a declared-vs-printed *text* field.
+
+    `images` is every image the value is printed on, not just the first. Brands
+    in particular appear twice — the back label repeats the brand as a heading —
+    and a check that reads the back copy has read the right text off a real
+    display line. Pinning a single index there asserts something the label does
+    not actually claim, and turns an OCR wobble on the front into a test failure
+    about the wrong thing.
 
     Returns None when nothing is declared (the check is NOT_DECLARED and has no
     observed text to assert).
@@ -60,16 +67,18 @@ def text_fact(declared: str | None, printed: str | None, image: int,
 
     if not declared or not declared.strip():
         return None
+    where = [images] if isinstance(images, int) else list(images)
     if printed and compare(declared, printed).outcome in (Outcome.PASS, Outcome.REVIEW):
-        return {"status": "matched", "text": printed, "printed": printed, "image": image}
+        return {"status": "matched", "text": printed, "printed": printed,
+                "images": where}
     if fine_print and punct_norm(declared) in punct_norm(fine_print):
-        return {"status": "only_in_fine_print", "image": image}
-    return {"status": "not_found", "text": None, "image": None}
+        return {"status": "only_in_fine_print", "images": where}
+    return {"status": "not_found", "text": None, "images": []}
 
 
 def numeric_facts(declared_abv: str | None, declared_net: str | None,
                   printed_abv: str | None, printed_net: str | None,
-                  image: int) -> dict:
+                  images: int | list[int]) -> dict:
     """Expected readings for abv / proof / net_contents.
 
     These come from a *parser* over the label text, so the check reports the
@@ -78,19 +87,20 @@ def numeric_facts(declared_abv: str | None, declared_net: str | None,
     """
     from ttbverify.parsers import parse_abv, parse_net_contents
 
+    where = [images] if isinstance(images, int) else list(images)
     out: dict[str, dict | None] = {"abv": None, "proof": None, "net_contents": None}
     reading = parse_abv(printed_abv or "")
     if declared_abv and reading.abv is not None:
         out["abv"] = {"status": "matched", "text": f"{reading.abv:g}%",
-                      "printed": printed_abv, "image": image}
+                      "printed": printed_abv, "images": where}
     if reading.proof is not None:
         out["proof"] = {"status": "matched", "text": f"{reading.proof:g} proof",
-                        "printed": printed_abv, "image": image}
+                        "printed": printed_abv, "images": where}
     net = parse_net_contents(printed_net or "")
     if declared_net and net.milliliters is not None:
         out["net_contents"] = {"status": "matched",
                                "text": f"{net.quantity:g} {net.unit}",
-                               "printed": printed_net, "image": image}
+                               "printed": printed_net, "images": where}
     return out
 
 
@@ -119,12 +129,13 @@ def audit_corpus(records: list[dict]) -> list[str]:
             continue
         facts = case.get("expect_observed") or {}
         images = case["application"]["images"]
-        text_by_image: dict[int, str] = {}
+        lines_by_image: dict[int, list[str]] = {}
         for idx, ref in enumerate(images):
             path = ref["path"]
             if not os.path.isabs(path):
                 path = os.path.join(REPO_ROOT, path)
-            text_by_image[idx] = punct_norm(engine.read(path, idx, ref.get("role")).text)
+            page = engine.read(path, idx, ref.get("role"))
+            lines_by_image[idx] = [punct_norm(line) for line in page.text.splitlines()]
 
         for check_id, fact in facts.items():
             if not fact or fact.get("status") != "matched":
@@ -134,12 +145,34 @@ def audit_corpus(records: list[dict]) -> list[str]:
             printed = fact.get("printed") or fact.get("text")
             if not printed:
                 continue
-            idx = fact.get("image", 0)
-            if punct_norm(printed) not in text_by_image.get(idx, ""):
+            want = punct_norm(printed)
+            found = any(
+                _legible(check_id, want, lines_by_image.get(idx, []))
+                for idx in fact.get("images") or [0]
+            )
+            if not found:
                 problems.append(
                     f"{case['case_id']}: {check_id} prints {printed!r} on image "
-                    f"{idx}, but it isn't legible there")
+                    f"{fact.get('images')}, but it isn't legible there")
     return problems
+
+
+def _legible(check_id: str, want: str, lines: list[str]) -> bool:
+    """Is `want` readable on this image *the way its check will look for it*?
+
+    Display fields (brand, class/type) must be a line of their own — that is the
+    admissibility rule the engine applies (design 3.2), and auditing anything
+    looser lets a real defect through: a brand clipped off the edge of the label
+    still appears inside the bottler statement further down, so a
+    "is this string anywhere on the image" check passes a label whose brand
+    Tesseract never saw. That is the exact failure this audit exists to catch.
+
+    Everything else may sit inside a longer line — a bottler statement is a
+    sentence, and "40% Alc./Vol." is printed inside "40% ALC./VOL. (80 PROOF)".
+    """
+    if check_id in ("brand", "class_type"):
+        return any(want == line for line in lines)
+    return any(want in line for line in lines)
 
 
 def load_boldness_cases() -> list[dict]:
@@ -150,3 +183,42 @@ def load_boldness_cases() -> list[dict]:
     for case in cases:
         case["image"]["path"] = os.path.join(REPO_ROOT, case["image"]["path"])
     return cases
+
+
+# --------------------------------------------------------------------------
+# cassette scenario (CLAUDE.md 2.9 — the recorded vision path)
+# --------------------------------------------------------------------------
+
+CASSETTE_IMAGES = os.path.join(os.path.dirname(__file__), "cassettes", "images")
+
+
+def cassette_application():
+    """The label the committed vision cassettes were recorded against.
+
+    Defined here rather than in either the test or the recorder so the two cannot
+    drift: the cassette key covers the prompt, the schema *and* the image bytes,
+    so a recorder that built a slightly different application would produce
+    recordings that never match at replay.
+
+    The images are frozen copies under `fixtures/cassettes/images/`, deliberately
+    not the generated corpus — regenerating `r12_lowlight` would otherwise
+    invalidate every recording.
+    """
+    from ttbverify.models import Commodity, LabelApplication
+
+    return LabelApplication(
+        serial_number="200012",
+        ttb_id="24RIC01000012",
+        brand_name="RUSTY ANCHOR",
+        class_type="Aged Caribbean Rum",
+        commodity=Commodity.SPIRITS,
+        alcohol_content="40% Alc./Vol.",
+        net_contents="750 mL",
+        applicant_name="Rusty Anchor Spirits",
+        images=[
+            {"path": os.path.join(CASSETTE_IMAGES, "lowlight_front.jpg"),
+             "role": "front"},
+            {"path": os.path.join(CASSETTE_IMAGES, "lowlight_back.jpg"),
+             "role": "back"},
+        ],
+    )

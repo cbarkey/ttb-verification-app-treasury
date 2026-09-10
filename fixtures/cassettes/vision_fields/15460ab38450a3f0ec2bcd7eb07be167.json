@@ -1,0 +1,32 @@
+{
+  "data": {
+    "fields": [
+      {
+        "confidence": 0.86,
+        "name": "brand",
+        "text": "RUSTY ANCHOR"
+      },
+      {
+        "confidence": 0.79,
+        "name": "class_type",
+        "text": "Aged Caribbean Rum"
+      },
+      {
+        "confidence": 0.71,
+        "name": "abv",
+        "text": "40% ALC./VOL. (80 PROOF)"
+      },
+      {
+        "confidence": 0.77,
+        "name": "net_contents",
+        "text": "750 mL"
+      }
+    ]
+  },
+  "error": null,
+  "kind": "vision_fields",
+  "model": "claude-sonnet-5",
+  "note": "Hand-authored to the schema. This repository was built without an ANTHROPIC_API_KEY, so no live reply could be captured; re-record with `python scripts/record_cassettes.py --record` when a key is available. The values are the label's true text (fixtures/cases_realistic.json, r12_lowlight) and the confidences are what a dark but legible photo would plausibly return. `producer` is deliberately absent: the bottler statement is the least legible thing on this photograph, and the prompt asks for null rather than a guess. That sends the pipeline to the back label for it, which is the behaviour worth testing.",
+  "ok": true,
+  "recorded_from": "hand-authored"
+}

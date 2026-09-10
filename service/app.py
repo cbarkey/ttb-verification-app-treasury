@@ -22,14 +22,15 @@ from service.schemas import (
     FinalizeResponse,
     HealthResponse,
     ImageMeta,
+    NoticeResponse,
     SessionResponse,
     VerifyResponse,
 )
 from service.sessions import SessionStore, StoredImage
+from ttbverify.ai import make_default_client
 from ttbverify.models import LabelApplication, Outcome
 from ttbverify.ocr import NullOcr, TesseractOcr
 from ttbverify.pipeline import verify
-from ttbverify.vlm import make_default_vlm
 
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_IMAGES = 6
@@ -40,7 +41,14 @@ _WEB_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
                          "web", "dist")
 
 
-def create_app() -> FastAPI:
+def create_app(*, ocr=None, ai=None) -> FastAPI:
+    """Build the app.
+
+    `ocr` and `ai` are injectable so a test — or a demo run replaying recorded
+    cassettes — can exercise a path a given machine cannot reach live. Both
+    default to "whatever this environment actually has", which behind a firewall
+    is Tesseract plus no model at all (N-06).
+    """
     app = FastAPI(
         title="TTB Label Verification (prototype)",
         version="0.1.0",
@@ -54,15 +62,17 @@ def create_app() -> FastAPI:
     )
 
     store = SessionStore()
-    ocr = TesseractOcr() if TesseractOcr.is_available() else NullOcr()
-    vlm = make_default_vlm()
+    if ocr is None:
+        ocr = TesseractOcr() if TesseractOcr.is_available() else NullOcr()
+    if ai is None:
+        ai = make_default_client()
     app.state.store = store
     app.state.ocr = ocr
-    app.state.vlm = vlm
+    app.state.ai = ai
 
     from service.routes_batch import make_batch_router
 
-    batch_router = make_batch_router(ocr=ocr, vlm=vlm)
+    batch_router = make_batch_router(ocr=ocr, ai=ai)
     app.include_router(batch_router)
     app.state.batch_store = batch_router.batch_store
 
@@ -90,6 +100,10 @@ def create_app() -> FastAPI:
             ocr="available" if isinstance(ocr, TesseractOcr) else "degraded",
             ocr_engine=type(ocr).__name__,
             active_sessions=len(store),
+            ai="available" if ai.available else "unavailable",
+            ai_model=ai.model or None,
+            ai_unavailable_reason=getattr(ai, "unavailable_reason", None)
+            if not ai.available else None,
         )
 
     @app.post("/api/verify", response_model=VerifyResponse)
@@ -101,11 +115,11 @@ def create_app() -> FastAPI:
         try:
             payload = json.loads(application)
         except json.JSONDecodeError as exc:
-            raise HTTPException(422, f"application field is not valid JSON: {exc}")
+            raise HTTPException(422, f"application field is not valid JSON: {exc}") from exc
         try:
             fields = DeclaredFields.model_validate(payload)
         except ValidationError as exc:
-            raise HTTPException(422, exc.errors())
+            raise HTTPException(422, exc.errors()) from exc
 
         if not images:
             raise HTTPException(422, "at least one image is required")
@@ -127,8 +141,9 @@ def create_app() -> FastAPI:
                     im.verify()
                 with Image.open(io.BytesIO(data)) as im:
                     w, h = im.size
-            except Exception:
-                raise HTTPException(422, f"'{upload.filename}' is not a readable image")
+            except Exception as exc:  # any decode failure gives the same answer
+                raise HTTPException(
+                    422, f"'{upload.filename}' is not a readable image") from exc
             role = None
             if roles and i < len(roles) and roles[i]:
                 role = roles[i]
@@ -151,7 +166,7 @@ def create_app() -> FastAPI:
                 images=image_refs,
                 **fields.model_dump(exclude_none=False),
             )
-            result = verify(app_model, ocr, vlm=vlm)
+            result = verify(app_model, ocr, ai=ai)
 
         session = store.create(app_model, stored, result)
         return VerifyResponse(
@@ -205,6 +220,28 @@ def create_app() -> FastAPI:
                                 unresolved_review_ids=unresolved,
                                 can_finalize=can_finalize)
 
+    @app.post("/api/sessions/{sid}/draft-notice", response_model=NoticeResponse)
+    def draft_notice(sid: str) -> NoticeResponse:
+        """2.9 use C — draft the rejection notice for this label.
+
+        The decision is already made by the time an agent clicks this; the model
+        is turning findings the rules engine produced into wording, and the agent
+        edits and owns the result.
+        """
+        from ttbverify.ai import notice as drafting
+
+        session = store.get(sid)
+        if session is None:
+            raise HTTPException(404, "session not found or expired")
+        application = {
+            k: v for k, v in vars(session.application).items() if k != "images"
+        }
+        draft, error = drafting.draft(ai, _jsonable(application),
+                                      session.result.to_dict())
+        if draft is None:
+            raise HTTPException(503, error or "no draft available")
+        return NoticeResponse(**draft.to_dict())
+
     @app.post("/api/sessions/{sid}/finalize", response_model=FinalizeResponse)
     def finalize(sid: str, body: FinalizeRequest) -> FinalizeResponse:
         session = store.get(sid)
@@ -213,6 +250,9 @@ def create_app() -> FastAPI:
         session.finalized = body.action
         return FinalizeResponse(session_id=session.id, action=body.action,
                                 decisions=session.decisions)
+
+    def _jsonable(values: dict) -> dict:
+        return {k: (str(v) if v is not None else None) for k, v in values.items()}
 
     # ---- static frontend (built React app), if present ----------------
 

@@ -2,6 +2,7 @@ import type {
   BatchRowState,
   BatchState,
   DeclaredFields,
+  DraftedNotice,
   SessionState,
   VerifyResponse,
 } from "./types";
@@ -36,6 +37,22 @@ export async function verify(
   );
 }
 
+export interface Health {
+  status: string;
+  ocr: string;
+  ocr_engine: string;
+  active_sessions: number;
+  /** "available" only when a model is configured. Behind a firewall or with no
+   *  key this is "unavailable", which is a normal state, not an error (N-06). */
+  ai: "available" | "unavailable";
+  ai_model: string | null;
+  ai_unavailable_reason: string | null;
+}
+
+export async function getHealth(): Promise<Health> {
+  return unwrap<Health>(await fetch("/api/health"));
+}
+
 export async function getSession(id: string): Promise<SessionState> {
   return unwrap<SessionState>(await fetch(`/api/sessions/${id}`));
 }
@@ -67,6 +84,26 @@ export async function finalize(
     }),
   );
   return getSession(id);
+}
+
+/** Draft rejection language for a label (CLAUDE.md 2.9, use C).
+ *  Behind an explicit action, so it costs nothing unless an agent asks. */
+export async function draftNotice(id: string): Promise<DraftedNotice> {
+  return unwrap<DraftedNotice>(
+    await fetch(`/api/sessions/${id}/draft-notice`, { method: "POST" }),
+  );
+}
+
+export async function draftBatchNotice(
+  id: string,
+  serial: string,
+): Promise<DraftedNotice> {
+  return unwrap<DraftedNotice>(
+    await fetch(
+      `/api/verify/batch/${id}/rows/${encodeURIComponent(serial)}/draft-notice`,
+      { method: "POST" },
+    ),
+  );
 }
 
 // ---- batch --------------------------------------------------------------

@@ -25,11 +25,12 @@ Image paths are resolved relative to the JSON file's directory.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
 
-from ttbverify.models import LabelApplication, Outcome, OUTCOME_LABEL
+from ttbverify.models import OUTCOME_LABEL, LabelApplication, Outcome
 from ttbverify.ocr import NullOcr, TesseractOcr
 from ttbverify.pipeline import verify
 
@@ -99,10 +100,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="force the degraded NullOcr path")
     args = parser.parse_args(argv)
 
-    try:
+    with contextlib.suppress(Exception):  # a console that rejects UTF-8 is not fatal
         sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
 
     app = _demo_application(args.demo) if args.demo else _load_application(args.application)
 

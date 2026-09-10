@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { batchExportUrl, getBatch, streamBatch } from "../api";
+import { GeneratedBanner } from "../components/AiLabel";
 import { OUTCOME_STYLE } from "../outcome";
 import type { BatchState } from "../types";
 
@@ -90,6 +91,8 @@ export function BatchQueue({ batchId, onReview }: Props) {
         </div>
       </div>
 
+      {batch.brief && <TriageBrief brief={batch.brief} />}
+
       <table className="mt-5 w-full text-sm">
         <thead>
           <tr className="text-left text-zinc-400 border-b border-zinc-200">
@@ -150,6 +153,54 @@ export function BatchQueue({ batchId, onReview }: Props) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * The triage brief (CLAUDE.md 2.9, use B).
+ *
+ * Prose *above* the table, never inside it. The table is the record and the
+ * brief is one supervisor's-eye read of it — so it is visually separated,
+ * labelled generated and advisory, and carries the model id. Nothing here is
+ * clickable into a decision.
+ */
+function TriageBrief({ brief }: { brief: NonNullable<BatchState["brief"]> }) {
+  return (
+    <div className="mt-5">
+      <GeneratedBanner model={brief.model}>
+        <p className="font-medium">{brief.headline}</p>
+
+        {brief.groups.length > 0 && (
+          <ul className="mt-2 space-y-1.5">
+            {brief.groups.map((g, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="mt-0.5 shrink-0 rounded bg-amber-200/70 px-1.5 text-xs font-semibold tabular-nums">
+                  {g.count || "—"}
+                </span>
+                <span>
+                  <span className="font-medium">{g.label}</span> — {g.detail}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {brief.watch_outs.length > 0 && (
+          <ul className="mt-2 list-disc pl-5 space-y-0.5 text-amber-900/90">
+            {brief.watch_outs.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        )}
+
+        {brief.truncated && (
+          <p className="mt-2 text-xs text-amber-800/80">
+            Summarised from the first exceptions only — the table below is
+            complete.
+          </p>
+        )}
+      </GeneratedBanner>
     </div>
   );
 }

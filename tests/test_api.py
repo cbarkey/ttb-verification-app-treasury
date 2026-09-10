@@ -28,10 +28,19 @@ def cases():
     return {c["case_id"]: c for c in load_cases()}
 
 
+def _first_image(cases) -> str:
+    return cases["clean_beer"]["application"]["images"][0]["path"]
+
+
+def _read(path: str) -> bytes:
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
 def _post_verify(client, case):
     fields = {k: v for k, v in case["application"].items() if k != "images"}
     files = [
-        ("images", (f"img{i}.png", open(im["path"], "rb"), "image/png"))
+        ("images", (f"img{i}.png", _read(im["path"]), "image/png"))
         for i, im in enumerate(case["application"]["images"])
     ]
     return client.post("/api/verify", data={"application": json.dumps(fields)}, files=files)
@@ -98,7 +107,7 @@ def test_cannot_resolve_a_non_review_check(client, cases):
 
 
 def test_verify_rejects_bad_application_json(client, cases):
-    files = [("images", ("x.png", open(cases["clean_beer"]["application"]["images"][0]["path"], "rb"), "image/png"))]
+    files = [("images", ("x.png", _read(_first_image(cases)), "image/png"))]
     r = client.post("/api/verify", data={"application": "{not json"}, files=files)
     assert r.status_code == 422
 
@@ -108,7 +117,7 @@ def test_verify_rejects_missing_required_field(client, cases):
         "/api/verify",
         data={"application": json.dumps({"brand_name": "X", "class_type": "Y",
                                          "commodity": "wine"})},  # no serial_number
-        files=[("images", ("x.png", open(cases["clean_beer"]["application"]["images"][0]["path"], "rb"), "image/png"))],
+        files=[("images", ("x.png", _read(_first_image(cases)), "image/png"))],
     )
     assert r.status_code == 422
 

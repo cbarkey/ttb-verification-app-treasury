@@ -127,10 +127,7 @@ def _warning_runs(mode: str) -> list[tuple[str, ImageFont.FreeTypeFont]]:
     header_font = _font(21, bold=(mode != "nonbold"))
     body_font = _font(21)
 
-    if mode == "titlecase":
-        header = "Government Warning:"
-    else:
-        header = "GOVERNMENT WARNING:"
+    header = "Government Warning:" if mode == "titlecase" else "GOVERNMENT WARNING:"
 
     if mode == "reworded":
         body = body.replace("operate machinery", "use heavy equipment")
@@ -251,11 +248,14 @@ class Case:
         from fixtures import numeric_facts, text_fact
 
         front = 0
+        # The back label repeats the brand as a heading, so the brand really is
+        # printed on both images and a check that reads either has read it right.
+        brand_on = [front] if self.single_image else [front, 1]
         printed_abv = self.label_abv_text or self.alcohol_content
         printed_net = self.label_net_text or self.net_contents
         facts = {
             "brand": text_fact(self.brand, self.label_brand or self.brand,
-                               front, self._fine_print),
+                               brand_on, self._fine_print),
             "class_type": text_fact(self.class_type,
                                     self.label_class_type or self.class_type, front),
             "producer": text_fact(self.applicant_name, self.applicant_name, front),

@@ -5,7 +5,7 @@
 implementation guidance and the pitfalls that actually bit, and (4) a build log of what
 exists today and why it is the way it is.
 
-**This is no longer a greenfield repo.** There is a working codebase, 248 passing tests,
+**This is no longer a greenfield repo.** There is a working codebase, 309 passing tests,
 three fixture corpora with per-field ground truth, and a running web app. Section 6 is the
 current state; Sections 3–5 are how to work on it without re-breaking things that have
 already been broken once.
@@ -467,9 +467,8 @@ for batch throughput (N-02).
 > **As built:** OCR is Tesseract (bake-off in the README — PaddleOCR pulls ~50 packages and a
 > runtime model download for no gain on clean renders). Backend is FastAPI; batch processing
 > uses a daemon thread + `ThreadPoolExecutor(4)` rather than asyncio (Section 6 says why).
-> Frontend is React + Vite + Tailwind, four screens (home, single, batch, review). The VLM
-> fallback is built but dormant — wiring it in is the next work, see Section 6.
-> Container and deploy are **not** done.
+> Frontend is React + Vite + Tailwind, four screens (home, single, batch, review). The vision
+> fallback is wired in and capped at REVIEW (2.9). Container and deploy are **not** done.
 
 #### Batch
 
@@ -670,8 +669,9 @@ two things this brief actually cares about.
 
 > **As built:** nothing on the cut list was cut except *property-based tests* and *automated
 > smoke E2E*. Batch shipped in full, including CSV export. Still outstanding from the Phase 1
-> list: CI and the container + deployment. The degradation set's **preprocessing** landed
-> after this was written — see 6 and `ttbverify/preprocess.py`. The VLM fallback is built behind its interface with the
+> list: CI and the container + deployment. Two things on it landed after this was written:
+> the degradation set's **preprocessing** (`ttbverify/preprocess.py`, 3.9) and the **VLM
+> fallback**, which is now wired in rather than merely available (2.9, `ttbverify/ai/`). The VLM fallback is built behind its interface with the
 > no-network path tested, but is not yet wired in — that is the next work (Section 6).
 
 ### 2.8 Trade-offs and assumptions to carry into the README
@@ -699,8 +699,9 @@ two things this brief actually cares about.
 
 ### 2.9 Where AI fits
 
-> **Design, not yet built.** Written after the Phase 1 build, before implementing. Section 6
-> tracks status.
+> **Built.** Written as a design before implementing, and kept as written — the notes marked
+> **As built** below are the only places the code diverged. `ttbverify/ai/`, and Section 6 for
+> status.
 
 The brief is titled *AI-Powered Alcohol Label Verification*, and it would be easy to satisfy
 that literally — put a model call on every verification and call it done. That would be the
@@ -825,6 +826,31 @@ validation (never string-scraping), an explicit timeout, a pinned model id, prom
 version control rather than buried in f-strings, graceful degradation to the deterministic
 path, and deterministic tests. Two or three uses wired to that standard say more than a dozen
 decorative ones.
+
+#### As built — where the code differs from the design above
+
+* **The fallback fires on `UNREADABLE` only, never on a `FAIL`.** A field OCR located and
+  read but which didn't match stays a FAIL, and the model is not asked for a second opinion.
+  This is stricter than "still unreadable after preprocessing" sounds: on a degraded photo,
+  `rules._locate_text` can report `not_found` — a FAIL — for a field that is genuinely just
+  illegible, and the model would probably read it. It is still the right line. Asking there
+  would let a model *downgrade an existing FAIL to REVIEW*, which is the same power to
+  soften a rejection that the cap exists to withhold, arriving through the back door. The
+  cost is `r12_lowlight`'s producer, which stays a FAIL on the deterministic path.
+* **Cassettes are hand-authored, not recorded.** This repository was built with no
+  `ANTHROPIC_API_KEY`, so no live reply could be captured. Each cassette says so in a `note`
+  field, the values are the fixtures' own ground truth, and
+  `python scripts/record_cassettes.py --record` re-records them properly against the API.
+  What they test is unaffected — the request fingerprint, the schema validation, the cap, the
+  attribution and the degradation paths are all real — but they are not evidence about what
+  the model actually returns.
+* **`scripts/record_cassettes.py` records by running the real pipeline** rather than from a
+  hand-written list of requests. A list would be a second implementation of "what does the
+  pipeline ask for", and since the cassette key covers the prompt, the schema *and* the image
+  bytes, the moment the two drifted every recording would silently stop matching.
+* **The result screen gained a way into review for an `UNREADABLE` label.** It used to be a
+  dead end — the only action was "request a better image". Now that the model can offer
+  readings for exactly those fields, an agent needs a route in to confirm them.
 
 #### The sentence this is all in service of
 
@@ -1010,17 +1036,30 @@ green for days:
 
 **The fix, and the standard for anything added from here:**
 
-1. **Ground truth records what the label says, per field, and on which image.** Every
-   generated case carries `expect_observed`: `{check_id: {status, text, printed, image}}`
-   with status `matched` / `only_in_fine_print` / `not_found`. The generators emit it — they
-   drew the label, so they know.
+1. **Ground truth records what the label says, per field, and on which images.** Every
+   generated case carries `expect_observed`:
+   `{check_id: {status, text, printed, images}}` with status `matched` /
+   `only_in_fine_print` / `not_found`. The generators emit it — they drew the label, so they
+   know. `images` is a *list*, and that matters: the back label repeats the brand as a
+   heading, so a check that reads the back copy has read the right text off a real display
+   line. Pinning one index asserted something the label doesn't claim and turned a
+   single-character OCR wobble on the front (`STPONEBRIDGE`) into a failure about the wrong
+   thing.
 2. **`tests/test_field_reading.py` asserts the pipeline against it** — currently 28
    undegraded labels x 7 categories. Text is compared through the normalization ladder so
    OCR noise is tolerated; the *image index* is asserted exactly.
 3. **The generators audit their own output.** `fixtures.audit_corpus()` runs after rendering:
    every field the ground truth claims is printed must be legible in that image's OCR, or
-   generation exits non-zero. A test proves the audit actually fires, so it can't rot into a
-   no-op.
+   generation exits non-zero. Two tests prove it fires, so it can't rot into a no-op.
+
+   **And it has to audit the way the check will actually read.** The first version asked "is
+   this string anywhere in the image's text", which is not the same question. A brand clipped
+   off the edge of the label *still appears* inside the bottler statement further down — so
+   that audit would have gone on passing the very defect it was written for. Display fields
+   (brand, class/type) must therefore be legible as a **line of their own**, mirroring the
+   engine's own admissibility rule (3.2); everything else may sit inside a longer line, since
+   a bottler statement is a sentence and `40% Alc./Vol.` is printed inside
+   `40% ALC./VOL. (80 PROOF)`.
 4. **Degraded fixtures are exempt from text assertions** (some fields genuinely can't be read
    through a keystone) but are still bound by the no-false-approval gates. Pinning current
    behaviour there would just bake in the limitation.
@@ -1080,12 +1119,15 @@ cd web && npm install && npm run build && cd ..     # frontend -> web/dist
 ```
 
 - **Runtime deps** (`requirements.txt`): Pillow, FastAPI, uvicorn, python-multipart, and
-  `anthropic` (only used if a key is present — see the VLM note in Section 6).
+  `anthropic` — the last one is used only when `ANTHROPIC_API_KEY` is set. With no key the
+  app runs identically minus the three AI features (2.9); that is a supported configuration,
+  not a degraded one, and it is what the whole test suite exercises.
 - **Dev** (`requirements-dev.txt`): adds pytest and httpx. `ruff` is used for linting but is
   deliberately not pinned as a dependency.
 - **No test touches the network**, ever. That's both determinism and the standing proof of the
-  no-egress fallback (N-06). Tests that need the `tesseract` binary are marked `corpus` and
-  skip cleanly without it.
+  no-egress fallback (N-06). Model-backed paths are tested from recorded cassettes under
+  `fixtures/cassettes/`. Tests that need the `tesseract` binary are marked `corpus` and skip
+  cleanly without it.
 
 ## Section 5 — Working on this codebase
 
@@ -1093,10 +1135,11 @@ cd web && npm install && npm run build && cd ..     # frontend -> web/dist
 python -m fixtures.generate      # clean corpus  -> fixtures/images/ + cases.json
 python -m fixtures.realistic     # realistic corpus (needs system fonts)
 python -m fixtures.boldness      # W-4 calibration corpus
-pytest                           # 248 tests
+pytest                           # 309 tests
 python report.py                 # all gates + the per-field reading table + overlays
 python -m service                # the web app on http://127.0.0.1:8000
 python -m ttbverify --demo brand_mismatch     # single label from the CLI
+python scripts/record_cassettes.py            # what model replies are recorded (2.9)
 ```
 
 `report.py` exits non-zero if any gate fails, so it doubles as a pre-commit check.
@@ -1108,7 +1151,8 @@ python -m ttbverify --demo brand_mismatch     # single label from the CLI
 | `ttbverify/` | the verification core — pure, no I/O except `ocr.py`. `rules.py` is the field engine, `warning.py` is W-1..W-4, `preprocess.py` is deskew, `pipeline.py` orchestrates. |
 | `service/` | FastAPI. `app.py` (single label + static), `routes_batch.py` + `batch.py` + `manifest.py` (batch). In-memory stores only. |
 | `web/src/screens/` | the three screens. `ReviewScreen` is shared by the single-label and batch paths. |
-| `fixtures/` | the three generators and their committed ground truth. |
+| `ttbverify/ai/` | the only place this project talks to a model. `client.py` is the transport (schema-validated tool calls, timeout, pinned model, cassettes); `vision.py` / `brief.py` / `notice.py` are 2.9's uses A / B / C; `prompts/` holds the prompts as files. |
+| `fixtures/` | the three generators and their committed ground truth, plus `cassettes/` — recorded model replies and the frozen images they were recorded against. |
 | `samples/` | ready-made batch ZIPs for trying the app. |
 
 **Invariants — breaking any of these is a bug, not a trade-off**
@@ -1122,6 +1166,12 @@ python -m ttbverify --demo brand_mismatch     # single label from the CLI
 6. **W-4 auto-PASSes or REVIEWs; it never auto-FAILs** (3.4).
 7. **Preprocessing must be reversible.** Anything that moves pixels maps its boxes back to
    the uploaded image's coordinates, at their original size (3.9).
+8. **A model-sourced reading is capped at `REVIEW`** — never `PASS`, never `FAIL`, and never
+   used to soften an existing `FAIL` (2.9). If you find yourself removing this to make a
+   demo look better, you have removed the reason a nondeterministic component is allowed
+   near the tool at all.
+9. **No test opens a socket.** `NullAi` is the default; model paths are tested from recorded
+   cassettes. This is N-06's proof, not a convenience.
 
 ---
 
@@ -1136,15 +1186,16 @@ everything below from scratch.
 | | |
 |---|---|
 | Verification core | brand, class/type, ABV, proof, net contents, producer, origin + W-1..W-4 |
+| Preprocessing | deskew / keystone, scored per image, applied only when it wins (3.9) |
+| AI | vision fallback (capped at REVIEW), batch triage brief, drafted rejection notices — 2.9 |
 | Interfaces | CLI (`python -m ttbverify`), FastAPI service, React UI (single label **and** batch) |
 | Corpora | clean 17 cases · realistic 16 · W-4 boldness 50 — all with per-field ground truth |
-| Tests | **248**: field-reading 58, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, preprocess 16, rules 12, warning 12, manifest 8, batch API 8, API 8, pipeline 7 |
+| Tests | **309**: field-reading 59, AI 40, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, preprocess 16, rules 12, warning 12, pipeline 12, AI cassettes 10, manifest 8, batch API 8, API 8, batch brief 5 |
 | Gates (all green) | 0 false approvals · 0 expectation mismatches · every field reads its own text · warning recall 1.0 · 0 regular headers auto-PASS W-4 |
 | Latency | clean p50/p95 ~458/463 ms · realistic p95 ~721 ms (budget 5000 ms, N-01) |
 | Review rate | 3.3% (reported, not gated) |
 
-**Not built:** CI, container, deployment. The VLM interface exists but is dormant — 2.9 is
-the design for wiring it in; "AI / LLM" below tracks status.
+**Not built:** CI, container, deployment.
 
 ### Decisions and tunables to preserve
 
@@ -1171,10 +1222,14 @@ the design for wiring it in; "AI / LLM" below tracks status.
 - **Numeric bands**: ABV exact ≤ 0.05, near-miss ≤ 0.5 → REVIEW, else FAIL. Net contents
   ≤ 1% → PASS, ≤ 5% → REVIEW, else FAIL. `parsers.PROOF_TOLERANCE = 1.01` allows half a point
   of label rounding.
-- **`_rank` breaks ties on *literal* (pre-normalization) similarity.** When the same value
-  appears twice and both normalize to a match, the more literal one wins — that points the
-  producer check at the bottler statement rather than the brand line on labels where the
-  distillery is also the brand.
+- **`_rank` orders candidates by *literal* similarity, above the normalized one.** When the
+  same value appears twice and both normalize to a match, the occurrence printed the way the
+  application declared it wins — that points the producer check at the bottler statement
+  rather than at the brand heading on labels where the distillery is also the brand. Two
+  things about it were wrong for a while and are worth not re-breaking: it casefolded both
+  sides (erasing the only signal it reads), and it sat *below* `m.similarity`, which for two
+  passing candidates is ~1.0 for both and differs only on noise — a stray comma in
+  `"Stonebridge Cellars,"` was enough to lose to a display heading on another page.
 - **OCR bake-off**: Tesseract over PaddleOCR. Paddle pulls ~50 packages plus a runtime model
   download (which fights N-06) for no accuracy gain on clean renders. Revisit only for the
   degradation set. Writeup in the README.
@@ -1207,6 +1262,15 @@ the design for wiring it in; "AI / LLM" below tracks status.
 7. **Deskew / keystone preprocessing** — projection-profile estimator, no new dependency.
    Recovered the `r14_wine_angle` brand (a documented limitation) and the whole warning block
    on `r16_warn_reworded_photo`; cost ~90 ms per image. 248 tests. See 3.9.
+8. **AI wired in per 2.9** — `ttbverify/ai/` replaces the dormant `vlm.py`. Three uses, the
+   REVIEW cap, cassette-backed tests, UI attribution. 309 tests.
+
+> **Superseded — do not resurrect.** `ttbverify/vlm.py` and `pipeline._apply_vlm_fallback`.
+> The old fallback ran a model reading through the normalization ladder and let it reach
+> `PASS` or `FAIL` on its own. Its tests asserted exactly that (`test_fallback_runs_comparison_not_blind_pass`
+> expected a PASS), which is why they had to be rewritten rather than ported: they pinned the
+> behaviour 2.9 forbids. It also only covered the four text fields, and asked once per field
+> per image.
 
 > **Superseded — do not resurrect.** `rules.PROMINENCE = 0.55` (a fraction of the tallest
 > word); then `BRAND_PROMINENCE = 1.8` / `SUBHEAD_PROMINENCE = 0.9` (multiples of the median
@@ -1215,56 +1279,52 @@ the design for wiring it in; "AI / LLM" below tracks status.
 > which line is the brand from geometry. All four were wrong, in ways only the per-field
 > reading tests exposed. `_locate_text` no longer guesses.
 
-### AI / LLM — the next piece of work
+### AI / LLM — built
 
-**The design is 2.9.** Read it before writing any of this. Summary of the decision and where
-the code stands today:
+**The design is 2.9 and it is implemented.** Read it before changing any of this; the
+"As built" notes at the end of 2.9 record where the code differs from the design.
 
-- **Scope: three uses, none decides compliance.** (A) a vision fallback that may only convert
-  `UNREADABLE` → `REVIEW`, never to `PASS` or `FAIL`; (B) a batch triage brief, advisory,
-  one call per batch; (C) on-demand draft rejection language. Everything else stays
-  deterministic, and 2.9 lists what was deliberately excluded and why — including W-4
-  boldness, which is the strongest alternative candidate and was declined on purpose.
-- **This reverses an earlier decision, deliberately.** The VLM was kept dormant because
-  `UNREADABLE` → "request a better image" is already the correct answer, Marcus's firewall
-  breaks cloud calls, a round trip eats the 5 s budget, and deterministic verdicts are easier
-  to defend. The brief is titled *AI-Powered Alcohol Label Verification*, which is fair to
-  read as expecting a model in the loop rather than only a seam where one could go. **The old
-  reasoning didn't evaporate — it became the constraints in 2.9.**
-- **Sequencing: deskew lands first.** The degraded fixtures fail mostly on rotation and
-  keystone, which a deterministic transform fixes in tens of milliseconds. Wiring the model
-  in first would use an expensive nondeterministic call to paper over a solved problem and
-  make its value impossible to measure. The model handles the residual.
+What exists (`ttbverify/ai/`):
 
-**What exists today** (`ttbverify/vlm.py`, `pipeline._apply_vlm_fallback`): a `VlmClient`
-protocol, `NullVlm` (the default, used by every test, and the standing proof of N-06), and a
-`ClaudeVlm` adapter gated on `ANTHROPIC_API_KEY`. The fallback retries only OCR-`UNREADABLE`
-*text* fields and runs any model value back through the normalization ladder.
+| | |
+|---|---|
+| `client.py` | the only transport. Forced tool call carrying a JSON schema, hand-rolled validation of the reply, explicit timeout, pinned model id (`claude-sonnet-5`), `NullAi` default, `CassetteAi` replay. Every failure returns `AiResult.failed(...)`; nothing raises. |
+| `prompts/*.txt` | the three prompts, as files. A change to what we ask is a reviewable diff. |
+| `vision.py` | use A. One call per image for whatever is still `UNREADABLE`. |
+| `brief.py` | use B. One call per batch over structured findings; images never leave. |
+| `notice.py` | use C. Behind a button, over findings the engine already produced. |
+| `pipeline._apply_vision_fallback` | **the cap.** A model reading becomes `REVIEW`, always. |
 
-**What that needs to become:**
+The four gates 2.9 named are pinned by tests: the cap (`test_pipeline.py`,
+`test_ai_cassette.py`), failure leaving fields `UNREADABLE` (both), batch rows identical with
+and without a brief (`test_batch_brief.py`), and the whole pipeline passing with no key and
+no socket (the suite itself — `NullAi` is the default everywhere).
 
-1. the `REVIEW` cap — today a model reading can reach `PASS` through the ladder, which 2.9
-   forbids;
-2. numeric fields (`abv`, `net_contents`) in scope — currently only the four text fields are;
-3. one call per image for all missing fields, not one per field;
-4. structured output with schema validation, an explicit timeout, a pinned model id, and
-   prompts in version control;
-5. `CassetteVlm` + committed responses so this is testable with no network, and
-   `expect_observed` entries so model readings are held to 3.8 like any other reading;
-6. batch policy — bounded concurrency and a per-batch call cap that degrades to plain
-   `UNREADABLE`;
-7. UI attribution — "read by vision model — confirm", with the model id;
-8. uses B and C, which don't exist at all yet.
+**Tunables and decisions to preserve**
+
+- `client.DEFAULT_MODEL = "claude-sonnet-5"`, pinned on purpose. `VISION_TIMEOUT_S = 3.0`
+  sits inside the 2.4 latency budget's 2500 ms vision slot with room for the request.
+- `brief.MAX_ITEMS = 60` — enough exceptions to see a pattern, few enough to keep one call
+  cheap on a 300-item batch. Past it the brief says it was truncated; the table is complete.
+- **The cassette key covers the prompt, the schema and the image bytes.** That is what makes
+  a prompt edit or a regenerated fixture invalidate a recording instead of silently
+  replaying an answer to a question we no longer ask. It is also why the frozen images live
+  in `fixtures/cassettes/images/` rather than being read from the generated corpora.
+- **Schema validation is hand-rolled** (`client.validate`) rather than `jsonschema`: the
+  schemas are ours and small, and N-06 is easier to argue with a smaller dependency surface.
+  It drops unknown keys, rejects `null` in a required field, and rejects `True` as a number
+  — Python says `isinstance(True, int)`, so that one needs saying out loud.
 
 ### Still to do
 
-~~degradation-set preprocessing~~ **done** (3.9) → **wire in the model per 2.9** → CI →
-container + deploy. Preprocessing went first on purpose: deterministic, cheap, and it fixed
-most of what was reading as `UNREADABLE`, so the model is now measured against the residual
-rather than against a problem we hadn't bothered to solve. What's left of that residual, and
-it is the model's brief: `r12_lowlight`'s producer line (blur plus a heavy vignette, not
-geometry) and `r14_wine_angle`'s warning wording, which OCR truncates mid-word on the
-keystoned back label.
+~~degradation-set preprocessing~~ **done** (3.9) → ~~wire in the model per 2.9~~ **done** →
+**CI** → **container + deploy**.
+
+Known limits still standing, both honest rather than hidden: `r12_lowlight`'s producer line
+FAILs on the deterministic path (blur plus a heavy vignette, not geometry — and the fallback
+deliberately doesn't fire on a FAIL, see 2.9 As built), and `r14_wine_angle`'s warning
+wording FAILs because OCR truncates words mid-way on the keystoned back label. Neither is a
+false approval; both are a compliant label sent to a human.
 
 Deploy (with the user): frontend likely on **Vercel**, backend container on **Render/Fly**;
 the user is handling the accounts.

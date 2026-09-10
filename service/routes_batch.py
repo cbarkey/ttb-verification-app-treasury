@@ -29,6 +29,7 @@ from service.batch import (
 )
 from service.manifest import blank_template, parse_manifest, reconcile
 from service.sessions import StoredImage
+from ttbverify.ai import brief as triage
 from ttbverify.models import LabelApplication, Outcome
 from ttbverify.pipeline import verify
 
@@ -38,7 +39,7 @@ _MAX_WORKERS = 4
 _PER_LABEL_TIMEOUT_MS = 5000.0
 
 
-def make_batch_router(*, ocr, vlm) -> APIRouter:
+def make_batch_router(*, ocr, ai) -> APIRouter:
     router = APIRouter(prefix="/api")
     store = BatchStore()
     router.batch_store = store  # exposed for tests / health
@@ -50,7 +51,7 @@ def make_batch_router(*, ocr, vlm) -> APIRouter:
     def _verify_row(row: BatchRow) -> None:
         row.status = "running"
         try:
-            row.result = verify(row.application, ocr, vlm=vlm,
+            row.result = verify(row.application, ocr, ai=ai,
                                 timeout_ms=_PER_LABEL_TIMEOUT_MS)
             row.status = "done"
         except Exception as exc:  # noqa: BLE001 - per-item isolation (design 3.7)
@@ -64,8 +65,27 @@ def make_batch_router(*, ocr, vlm) -> APIRouter:
             futs = [pool.submit(_verify_row, r) for r in batch.processable]
             for _ in as_completed(futs):
                 pass
-        batch.state = "complete"
         batch.finished_at = time.time()
+        _write_brief(batch)
+        # State flips to complete only after the brief has been attempted, so a
+        # client that stops listening on "done" never misses it. The brief is
+        # advisory and optional; if it fails, this is a no-op (2.9 use B).
+        batch.state = "complete"
+
+    def _write_brief(batch: Batch) -> None:
+        """One call per batch, after processing, over structured findings only.
+
+        N-01 is untouched — this fires after every row is done. A failure leaves
+        `batch.brief` as None and changes nothing else: the rows, the queue order
+        and the CSV export are byte-identical with and without it.
+        """
+        try:
+            result, error = triage.summarize(ai, batch.rows_for_brief())
+        except Exception as exc:  # noqa: BLE001 — advisory must never break a batch
+            batch.brief, batch.brief_error = None, f"{type(exc).__name__}: {exc}"
+            return
+        batch.brief = result.to_dict() if result else None
+        batch.brief_error = error
 
     # ---- helpers -----------------------------------------------------
 
@@ -105,8 +125,8 @@ def make_batch_router(*, ocr, vlm) -> APIRouter:
             raise HTTPException(413, f"archive exceeds {MAX_ZIP_BYTES // (1024 * 1024)} MB")
         try:
             zf = zipfile.ZipFile(io.BytesIO(data))
-        except zipfile.BadZipFile:
-            raise HTTPException(422, "not a valid ZIP archive")
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(422, "not a valid ZIP archive") from exc
 
         names = [n for n in zf.namelist() if not n.endswith("/")]
         manifest_name = next(
@@ -141,7 +161,7 @@ def make_batch_router(*, ocr, vlm) -> APIRouter:
                     try:
                         with Image.open(io.BytesIO(raw)) as im:
                             w, h = im.size
-                    except Exception:
+                    except Exception:  # noqa: BLE001 — any decode failure blocks the row
                         blocked, reason = True, f"'{fname}' is not a readable image"
                         break
                     ext = os.path.splitext(fname)[1].lower()
@@ -265,6 +285,29 @@ def make_batch_router(*, ocr, vlm) -> APIRouter:
             raise HTTPException(422, "action must be approve / reject / request_image")
         row.finalized = action
         return {"serial_number": serial, "action": action}
+
+    @router.post("/verify/batch/{bid}/rows/{serial}/draft-notice")
+    def row_draft_notice(bid: str, serial: str) -> dict:
+        """2.9 use C: draft rejection language for one flagged row.
+
+        Behind an explicit action, so an unused feature costs nothing per label,
+        and it runs on findings the rules engine already produced — the model is
+        not re-reading the label and cannot introduce a fact the engine didn't
+        establish. The agent edits and owns whatever comes back.
+        """
+        from ttbverify.ai import notice as drafting
+
+        row = _row(_get(bid), serial)
+        if not row.result:
+            raise HTTPException(409, "this row has no result to write about yet")
+        application = {"serial_number": row.serial_number,
+                       "brand_name": row.brand_name,
+                       **{k: v for k, v in (row.fields or {}).items()
+                          if k != "images"}}
+        draft, error = drafting.draft(ai, application, row.result.to_dict())
+        if draft is None:
+            raise HTTPException(503, error or "no draft available")
+        return draft.to_dict()
 
     @router.get("/verify/batch/{bid}/export.csv")
     def export_csv(bid: str) -> Response:

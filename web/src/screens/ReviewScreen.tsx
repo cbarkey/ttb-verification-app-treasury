@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { VisionBadge, isFromModel } from "../components/AiLabel";
+import { NoticeDrawer } from "../components/NoticeDrawer";
 import { NEEDS_ATTENTION, OUTCOME_STYLE } from "../outcome";
-import type { Check, ReviewData } from "../types";
+import type { Check, DraftedNotice, ReviewData } from "../types";
 import { LabelViewer } from "./LabelViewer";
 
 export interface ReviewNav {
@@ -16,6 +18,9 @@ interface Props {
   nav?: ReviewNav;
   onDecide: (checkId: string, decision: "accept" | "reject") => Promise<ReviewData>;
   onFinalize: (action: "approve" | "reject" | "request_image") => void;
+  /** Draft rejection language for this label (2.9 use C). Omitted when no
+   *  model is configured, in which case the button isn't shown at all. */
+  onDraftNotice?: () => Promise<DraftedNotice>;
 }
 
 function decisionLabels(c: Check): { accept: string; reject: string } {
@@ -24,8 +29,16 @@ function decisionLabels(c: Check): { accept: string; reject: string } {
   return { accept: "Accept", reject: "Reject" };
 }
 
-export function ReviewScreen({ data, title, nav, onDecide, onFinalize }: Props) {
+export function ReviewScreen({
+  data,
+  title,
+  nav,
+  onDecide,
+  onFinalize,
+  onDraftNotice,
+}: Props) {
   const { result, images } = data;
+  const [notice, setNotice] = useState<DraftedNotice | null>(null);
 
   const attention = useMemo(
     () => result.checks.filter((c) => NEEDS_ATTENTION.includes(c.outcome)),
@@ -72,6 +85,8 @@ export function ReviewScreen({ data, title, nav, onDecide, onFinalize }: Props) 
   };
 
   const checksOnTab = result.checks.filter((c) => c.box && c.image_index === tab);
+  const modelRead = result.checks.filter(isFromModel);
+  const rejectable = result.checks.some((c) => c.outcome === "FAIL");
 
   return (
     <div className="flex-1 flex flex-col">
@@ -111,6 +126,15 @@ export function ReviewScreen({ data, title, nav, onDecide, onFinalize }: Props) 
                 ? `${data.unresolved_review_ids.length} still to resolve`
                 : "all review items resolved"}
             </p>
+            {modelRead.length > 0 && (
+              <p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                OCR couldn&rsquo;t read{" "}
+                {modelRead.length === 1 ? "one field" : `${modelRead.length} fields`}
+                , so a vision model was asked what the label says. Those rows are
+                tagged below and always need your confirmation — a model reading
+                is never approved automatically.
+              </p>
+            )}
           </div>
 
           <ul>
@@ -193,6 +217,16 @@ export function ReviewScreen({ data, title, nav, onDecide, onFinalize }: Props) 
             Resolve the review items above to enable Approve.
           </span>
         )}
+        {onDraftNotice && rejectable && (
+          <button
+            disabled={busy}
+            onClick={async () => setNotice(await onDraftNotice())}
+            className="rounded-lg px-4 py-2.5 font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
+            title="Draft the rejection notice from these findings. You edit and send it."
+          >
+            Draft notice
+          </button>
+        )}
         <button
           disabled={busy}
           onClick={() => doFinalize("request_image")}
@@ -215,6 +249,8 @@ export function ReviewScreen({ data, title, nav, onDecide, onFinalize }: Props) 
           Approve
         </button>
       </div>
+
+      {notice && <NoticeDrawer notice={notice} onClose={() => setNotice(null)} />}
     </div>
   );
 }
@@ -275,6 +311,12 @@ function CheckRow({
 
         {check.detail && (
           <p className="mt-1 text-sm text-zinc-500">{check.detail}</p>
+        )}
+
+        {isFromModel(check) && (
+          <div className="mt-2">
+            <VisionBadge check={check} />
+          </div>
         )}
 
         {check.outcome === "FAIL" && diff.length > 0 && (

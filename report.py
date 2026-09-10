@@ -16,23 +16,25 @@ Run:  python report.py
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8")  # Windows console is cp1252 by default
-except Exception:
-    pass
+with contextlib.suppress(Exception):  # Windows console is cp1252 by default
+    sys.stdout.reconfigure(encoding="utf-8")
 
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
+from PIL import Image, ImageDraw, ImageFont
 
-from fixtures import (  # noqa: E402
-    REPO_ROOT, load_boldness_cases, load_cases, load_realistic_cases,
+from fixtures import (
+    REPO_ROOT,
+    load_boldness_cases,
+    load_cases,
+    load_realistic_cases,
 )
-from ttbverify import warning  # noqa: E402
-from ttbverify.models import LabelApplication, Outcome  # noqa: E402
-from ttbverify.ocr import NullOcr, TesseractOcr  # noqa: E402
-from ttbverify.pipeline import verify  # noqa: E402
+from ttbverify import warning
+from ttbverify.models import LabelApplication, Outcome
+from ttbverify.ocr import NullOcr, TesseractOcr
+from ttbverify.pipeline import verify
 
 OUT = os.path.join(REPO_ROOT, "out")
 
@@ -111,7 +113,7 @@ def main() -> int:
 
     timings.sort()
     p50 = timings[len(timings) // 2]
-    p95 = timings[min(len(timings) - 1, max(0, int(round(0.95 * len(timings))) - 1))]
+    p95 = timings[min(len(timings) - 1, max(0, round(0.95 * len(timings)) - 1))]
 
     print()
     print(bar)
@@ -188,8 +190,8 @@ def _field_reading_report(engine) -> bool:
             if fact["status"] == "matched":
                 good = (check.observed is not None
                         and compare(fact["text"], check.observed).outcome is Outcome.PASS
-                        and (fact.get("image") is None
-                             or check.image_index == fact["image"]))
+                        and (not fact.get("images")
+                             or check.image_index in fact["images"]))
                 mark = "ok" if good else "WRONG"
             elif fact["status"] == "only_in_fine_print":
                 good = check.evidence.get("match") == "only_in_fine_print"
@@ -247,7 +249,7 @@ def _realistic_report(engine) -> bool:
               f"{result.verdict.value:10s} {flagged}")
 
     timings.sort()
-    p95 = timings[min(len(timings) - 1, max(0, int(round(0.95 * len(timings))) - 1))]
+    p95 = timings[min(len(timings) - 1, max(0, round(0.95 * len(timings)) - 1))]
     print()
     print(f"  false approvals            {len(false_appr)}  "
           f"{'PASS' if not false_appr else 'FAIL ' + str(false_appr)}")
@@ -308,7 +310,7 @@ def _boldness_report(engine) -> bool:
     for case in cases:
         page = engine.read(case["image"]["path"], 0, "back")
         loc = warning.locate([page])
-        outcome, ev = (warning.assess_boldness(loc, Image.open(case["image"]["path"]))
+        outcome, _ev = (warning.assess_boldness(loc, Image.open(case["image"]["path"]))
                        if loc else (None, {}))
         val = outcome.value if outcome else "NO-LOC"
         if case["expect_bold"] is False and val == "PASS":

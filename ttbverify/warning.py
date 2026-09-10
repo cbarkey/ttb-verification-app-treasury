@@ -260,19 +260,22 @@ def assess_boldness(loc: WarningLocation, image) -> tuple[Outcome, dict]:
         return Outcome.REVIEW, {"reason": "No image available — confirm boldness from the label."}
     header = loc.anchor_words
     if not header or loc.anchor_box.height < _BOLD_MIN_HEADER_PX:
-        return Outcome.REVIEW, {"reason": "Header text too small to measure — confirm from the crop."}
+        return Outcome.REVIEW, {
+            "reason": "Header text too small to measure — confirm from the crop."}
 
     body = [w for w in loc.words if w not in header
             and sum(ch.isalpha() for ch in w.text) >= 3]
     if len(body) < 3:
-        return Outcome.REVIEW, {"reason": "No regular-weight text to compare against — confirm from the crop."}
+        return Outcome.REVIEW, {
+            "reason": "No regular-weight text to compare against — confirm from the crop."}
     first_top = body[0].box.top
     body_line = [w for w in body if abs(w.box.top - first_top) < body[0].box.height][:12]
 
     h_thick = _strip_thickness(image, BoundingBox.enclosing(w.box for w in header))
     b_thick = _strip_thickness(image, BoundingBox.enclosing(w.box for w in body_line))
     if not h_thick or not b_thick:
-        return Outcome.REVIEW, {"reason": "Couldn't measure stroke weight cleanly — confirm from the crop."}
+        return Outcome.REVIEW, {
+            "reason": "Couldn't measure stroke weight cleanly — confirm from the crop."}
 
     ratio = h_thick / b_thick
     ev = {"header_stroke": round(h_thick, 4), "body_stroke": round(b_thick, 4),
@@ -316,7 +319,7 @@ def evaluate(pages: list[OcrPage], images: dict | None = None,
                         detail="No statement located to review for boldness."),
         ]
 
-    common = dict(image_index=loc.page_index, image_role=loc.page_role)
+    common = {"image_index": loc.page_index, "image_role": loc.page_role}
 
     # W-1 presence
     w1 = CheckResult("warn_present", _CHECK_LABELS["warn_present"], Outcome.PASS,

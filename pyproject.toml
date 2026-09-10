@@ -24,3 +24,33 @@ markers = [
     "realistic: accuracy layer over the realistic (styled + degraded) corpus",
     "boldness: W-4 auto-confirm calibration over the matched bold/not-bold corpus",
 ]
+
+# Lint config is explicit rather than inherited from whatever ruff defaults to
+# this month: CI gates on it (see .github/workflows/ci.yml), so the rule set has
+# to be a decision in version control, not a moving target.
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["web", "out", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "BLE", "C4", "UP", "SIM", "RUF"]
+ignore = [
+    # FastAPI's whole parameter idiom is `x: T = File(...)` / `Form(...)`.
+    "B008",
+    # Prose in docstrings and user-facing strings uses en/em dashes and curly
+    # quotes deliberately; these rules flag them as ambiguous unicode.
+    "RUF001", "RUF002", "RUF003",
+    # `class Outcome(str, Enum)` is load-bearing: it is what makes the enum
+    # JSON-serialisable and comparable to the strings the API and CSV export
+    # use. StrEnum would work too, and changing it buys nothing.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixture generators build labels by mutating a sheet; long literal layout lines
+# read better unwrapped than folded.
+"fixtures/*.py" = ["E501"]
+# Test doubles keep mutable class attributes on purpose — a list of captured
+# requests is the assertion. ClassVar annotations would only add noise.
+"tests/*.py" = ["RUF012"]

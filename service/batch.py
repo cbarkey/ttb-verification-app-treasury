@@ -95,6 +95,11 @@ class Batch:
     state: str = "ready"                       # ready | running | complete
     started_at: float | None = None
     finished_at: float | None = None
+    # Advisory triage brief (2.9 use B). Absent is a normal state — no model
+    # configured, the call failed, or there were no exceptions to triage. Nothing
+    # else about the batch changes either way.
+    brief: dict | None = None
+    brief_error: str | None = None
 
     def row(self, serial: str) -> BatchRow | None:
         return next((r for r in self.rows if r.serial_number == serial), None)
@@ -117,6 +122,20 @@ class Batch:
         done = sum(1 for r in self.processable if r.status in ("done", "error"))
         return {"done": done, "total": len(self.processable), "state": self.state}
 
+    def rows_for_brief(self) -> list[dict]:
+        """Structured findings for the triage brief — never the images (2.9)."""
+        out = []
+        for row in self.queue_order():
+            if not row.result:
+                continue
+            out.append({
+                "serial_number": row.serial_number,
+                "brand_name": row.brand_name,
+                "verdict": row.verdict,
+                "checks": [c.to_dict() for c in row.result.checks],
+            })
+        return out
+
     def to_dict(self) -> dict:
         return {
             "batch_id": self.id,
@@ -125,6 +144,7 @@ class Batch:
             "preflight": self.preflight.to_dict(),
             "rows": [r.summary() for r in self.queue_order()],
             "exception_serials": self.exception_serials(),
+            "brief": self.brief,
         }
 
 

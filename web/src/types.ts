@@ -100,6 +100,28 @@ export interface BatchState {
   preflight: PreflightReport;
   rows: BatchRowSummary[];
   exception_serials: string[];
+  /** Advisory triage brief. Null is a normal state — no model configured, the
+   *  call failed, or there was nothing to triage. The rows are the record. */
+  brief: TriageBrief | null;
+}
+
+export interface TriageBrief {
+  headline: string;
+  groups: { label: string; count: number; detail: string }[];
+  watch_outs: string[];
+  model: string;
+  truncated: boolean;
+  generated: true;
+  advisory: true;
+}
+
+export interface DraftedNotice {
+  subject: string;
+  body: string;
+  items: string[];
+  model: string;
+  generated: true;
+  advisory: true;
 }
 
 export interface BatchRowState {
