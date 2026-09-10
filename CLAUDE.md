@@ -25,7 +25,9 @@ lessons in Section 3 were learned the expensive way.
 3. **Adding a rule or a fixture?** Section 3.8 is not optional reading. Outcome-only tests
    have already let two real defects through this project; every new check needs a test that
    asserts *what it read*, not just what it decided.
-4. **Keep this file current.** It's the project's memory. When you make a decision worth
+4. **Wondering where the AI is?** Section 2.9. Short version: three uses, none of which
+   decide compliance, and a model-sourced reading is capped at `REVIEW`.
+5. **Keep this file current.** It's the project's memory. When you make a decision worth
    preserving — or discover that advice in here is wrong — write it down here, and correct
    the stale guidance in place rather than leaving both versions standing.
 
@@ -410,7 +412,7 @@ Reference text (27 CFR 16.21) — **this exact text, do not paraphrase it**:
 | **W-1 Presence** | Statement located on any of the application's images. Absent → `FAIL`. | Missing warning |
 | **W-2 Text fidelity** | Word-exact against reference after whitespace collapse only. Any substitution, omission, or insertion → `FAIL`, with a word-level diff. **Caveat:** real OCR makes character-level errors, so a naive word-exact comparison against OCR output will produce false rejections on clean labels. Use a two-band comparison — a token that's *close* to the reference (e.g. similarity ≥ ~0.75) is probably OCR noise and should downgrade the check to `REVIEW`, not `FAIL`; a token that's genuinely different is a real `FAIL`. Build a test with deliberately noisy OCR-like input to catch this before it becomes a production false-rejection bug. | Creative rewording |
 | **W-3 Casing** | `GOVERNMENT WARNING` must be all caps. Title case → `FAIL`. | Jenny's title-case rejection |
-| **W-4 Boldness** | **Route to human review in v1, always.** Do not attempt to auto-decide this. See Section 3.4 for why a naive stroke-weight/ink-density heuristic will look plausible in a demo and still be fundamentally unreliable — it's confounded by capitalization itself. Show a cropped image of the warning next to the reference and let a human answer in one glance. | Non-bold warning header |
+| **W-4 Boldness** | **Superseded — see 3.4.** The original rule was "route to human review, always, never auto-decide"; the reasoning (a density threshold is confounded by capitalization) is right but the conclusion was too pessimistic. **As built:** the header is measured against the statement's *own* regular-weight text, which removes the confound. It auto-PASSes only when confidently heavier, and **never auto-FAILs** — everything short of confident still goes to a human with the measurement and a crop. | Non-bold warning header |
 
 **Implementation constraint:** the OCR path must preserve original casing and expose
 per-word bounding boxes. A pipeline that lowercases on ingest cannot satisfy W-3 or the
@@ -676,14 +678,16 @@ two things this brief actually cares about.
 
 1. **Local OCR first, vision model conditionally.** Trades some accuracy on difficult images
    for the headroom N-01 and N-02 require. A VLM-per-label design is more accurate and
-   cannot hold 5 s under batch load.
+   cannot hold 5 s under batch load. Where AI *is* used, and the reasoning for keeping it out
+   of every regulatory verdict, is 2.9.
 2. **5 s is per-label interactive latency, not per-batch.** The source anecdote describes an
    agent waiting on one label. Batch is specified as throughput with streamed results.
 3. **Tuned toward false reviews over false approvals.** Agents will see items flagged that
    were fine. That's the correct direction for a regulatory check, and it should be
    measured, not just asserted.
-4. **Bold detection is a human-review item, not an automated check.** Deliberate — see
-   Section 3.4.
+4. **Bold detection auto-confirms only the confidently-bold case and never rejects.**
+   Measured against the statement's own regular-weight text; anything short of confident is a
+   human-review item. See 3.4.
 5. **ABV compared exactly; near-misses go to review.** The prototype shouldn't assert
    tolerance values it hasn't verified against current regulation.
 6. **Missing declared values produce no comparison, not a failure.**
@@ -692,6 +696,144 @@ two things this brief actually cares about.
 8. **Not a complete TTB rules engine.** Application-to-label consistency plus the health
    warning. Standards of identity, standards of fill, appellations, allergens, and type-size
    measurement are out of scope and should be named as such, not silently ignored.
+
+### 2.9 Where AI fits
+
+> **Design, not yet built.** Written after the Phase 1 build, before implementing. Section 6
+> tracks status.
+
+The brief is titled *AI-Powered Alcohol Label Verification*, and it would be easy to satisfy
+that literally — put a model call on every verification and call it done. That would be the
+wrong build. The core checks are deliberately rules-based (2.3, 3.x), because for a
+regulatory tool three properties matter more than model capability:
+
+- **Determinism.** The same label must produce the same verdict every time. A model doesn't
+  guarantee that.
+- **Latency.** N-01 is a hard 5 s and the whole architecture (2.4) is arranged around keeping
+  a network round-trip off the per-label path. The last vendor died at 30–40 s.
+- **Defensibility.** "The wording differs at word 34: the statute says *machinery*, the label
+  says *a boat*" is an answer an auditor can check. "The model flagged it" is not.
+
+So AI goes where it adds capability the deterministic system genuinely lacks, and nowhere
+else. Three places, none of which decide compliance.
+
+#### The three uses
+
+| Use | Fires | Decides a verdict? | Serves |
+|-----|-------|--------------------|--------|
+| **A. Vision fallback for unreadable fields** | only when a field is still `UNREADABLE` after preprocessing | **No** — can only turn `UNREADABLE` into `REVIEW` | Jenny Park: "images that aren't perfectly shot" |
+| **B. Batch triage brief** | once, after a batch completes | No — the queue table stays the record | Sarah Chen: 200–300 labels dumped at once (F-05) |
+| **C. Draft rejection language** | on demand, per flagged item | No — the decision is already made | Sarah Chen: "agents drowning in routine stuff" |
+
+**A — Vision fallback.** When OCR can't read or locate a field, call a vision model on that
+image for the fields still missing (one call per image, not per field) rather than returning
+`UNREADABLE` immediately. This is the one class of problem — glare, blur, bad lighting —
+that classical OCR structurally cannot handle and a VLM can.
+
+**The cap, and it is the whole safety argument: a model-sourced reading can only ever produce
+`REVIEW`.** Not `PASS`, and not `FAIL` either. The model's sole power is to convert *"I can't
+read this"* into *"here's what it appears to say — please confirm."* Reasons:
+
+- **It keeps "zero false approvals" a property of the deterministic system.** That number is
+  gated in CI against corpora we can actually run; a nondeterministic component that could
+  mint a `PASS` puts a provable property back into the merely-likely category.
+- **It makes network dependence benign.** With a key: `REVIEW` plus a reading. Without one:
+  `UNREADABLE`. Both route to a human; neither approves. The verdict never flips between
+  approved and not-approved based on whether Marcus's firewall let the call through.
+- **It still delivers the value.** Jenny's actual complaint is that an unreadable label gets
+  *bounced back to the applicant*, costing days. Turning that into a one-glance confirmation
+  is most of the win; turning it into a silent auto-approve is the risky remainder.
+
+A model-supplied value is still run through the same normalization ladder and the same
+parsers — the model supplies a *reading*, the rules still do the *judging* — but the outcome
+is clamped to `REVIEW` regardless of what the ladder concludes.
+
+**B — Batch triage brief.** After a batch finishes, send the *structured findings* (serials,
+verdicts, per-check outcomes, declared vs observed) — **not the images** — and get back a
+short brief: *"31 of the 40 exceptions are the same ABV rounding pattern from one importer's
+submission — handle them as a group. 6 are missing warning statements. 3 are unreadable
+photos."* One call per batch, so cost and latency are negligible and N-01 is untouched
+(it fires after processing completes). A `groupby` gets perhaps 70% of this; the
+cross-cutting pattern-spotting and the framing is the part it doesn't. **The brief is prose
+above the table; the table remains the record.** If the call fails, the brief is simply
+absent and nothing else changes.
+
+**C — Draft rejection language.** Agents write rejection notices by hand. Given findings the
+rules engine already produced — including the word-level warning diff — draft the notice.
+Behind a button, so it costs nothing unless used, and the output is copy-to-clipboard text
+the agent edits and owns.
+
+#### What is deliberately *not* AI, and why
+
+| | Why not |
+|---|---|
+| Brand / class / producer / origin matching | The normalization ladder is deterministic, explainable, and already correct. A model here trades auditability for nothing. |
+| W-2 warning wording | A word-exact statutory check. Reading the statute through a paraphrasing-capable model is the single most dangerous place to put nondeterminism. |
+| W-3 casing | Trivially deterministic. |
+| W-4 boldness | The strongest alternative candidate, and declined on purpose. A VLM is genuinely good at "is this header visually heavier?" — but that is a *judgment*, not a *reading*, so it can't be validated the way a reading can, and the stroke-weight ratio (3.4) is already auditable and calibrated. |
+| ABV / proof / net contents | Pure arithmetic over a parser. |
+
+#### Sequencing — deskew before the model
+
+**Preprocessing lands first.** The degraded fixtures fail mostly on rotation and keystone,
+which a deterministic transform fixes in tens of milliseconds. Wiring the model in first
+would spend a 2.5 s nondeterministic network call papering over a problem solved locally, it
+would fire far more often than it should, and we would have no way to tell how much of its
+apparent value was just missing deskew. The model handles the **residual** — glare, blur,
+genuinely bad light.
+
+#### Budget and failure behaviour
+
+- **Single label:** one vision call, only on `UNREADABLE` fields, ~2.5 s worst case — the
+  slot already reserved in the 2.4 latency table. Typical path: no call at all.
+- **Batch:** bounded concurrency shared with the OCR pool, plus a per-batch call cap. Past
+  the cap, remaining unreadable fields stay `UNREADABLE` and the brief says so. A pathological
+  batch must not stall N-02 throughput.
+- **Timeout, error, no key, or firewalled:** log once, degrade to the deterministic result.
+  Affected fields stay `UNREADABLE`. Never `PASS` on an unperformed check.
+- **Malformed model output:** schema validation rejects it; treated as no answer.
+
+#### Testing — no network, ever
+
+`NullVlm` stays the default, so the existing suite is untouched and N-06 remains provable.
+
+- **Recorded cassettes.** A `CassetteVlm` replays committed JSON responses keyed by request.
+  Record once against the real API, commit, replay in CI. No test ever opens a socket.
+- **Per-field ground truth applies to model readings too (3.8).** A model-supplied value is
+  still a *reading*; cassette-backed cases get `expect_observed` entries and are asserted the
+  same way as OCR readings.
+- Gates specific to this work:
+  1. a model-sourced reading **never** yields `PASS` or `FAIL` — always `REVIEW`;
+  2. timeout / error / malformed output leaves the field `UNREADABLE`, never upgraded;
+  3. batch rows are byte-identical with and without the brief;
+  4. the whole pipeline still passes with no network and no key.
+
+#### Attribution in the UI
+
+An agent must always be able to tell which findings a model touched.
+
+- A check whose reading came from the model is labelled in the review row — *"read by vision
+  model — confirm"* — with the model id, alongside the existing `evidence.source`.
+- The result screen notes when the model was consulted at all.
+- The batch brief is visibly labelled as generated and advisory, sitting above the table
+  rather than inside it.
+
+#### Engineering standard for the model calls
+
+Competence here is in the wiring, not the call count: structured output with schema
+validation (never string-scraping), an explicit timeout, a pinned model id, prompts kept in
+version control rather than buried in f-strings, graceful degradation to the deterministic
+path, and deterministic tests. Two or three uses wired to that standard say more than a dozen
+decorative ones.
+
+#### The sentence this is all in service of
+
+> AI is used in three places, none of which decide compliance. A vision model reads fields
+> classical OCR can't — and a model-sourced reading can raise an item to human review, never
+> to approved. An LLM writes the batch triage brief and drafts rejection language from
+> findings the rules engine already produced. Every regulatory verdict comes from
+> deterministic code, so every one of them can be explained to an auditor by pointing at the
+> exact word that didn't match the statute.
 
 ---
 
@@ -955,7 +1097,8 @@ everything below from scratch.
 | Review rate | 3.3% (reported, not gated) |
 
 **Not built:** degradation preprocessing (deskew / perspective), CI, container, deployment.
-The VLM interface exists but is dormant — see "AI / LLM" below, which is the next piece of work.
+The VLM interface exists but is dormant — 2.9 is the design for wiring it in; "AI / LLM"
+below tracks status.
 
 ### Decisions and tunables to preserve
 
@@ -1021,41 +1164,52 @@ The VLM interface exists but is dormant — see "AI / LLM" below, which is the n
 
 ### AI / LLM — the next piece of work
 
-The VLM interface (`ttbverify/vlm.py`) has existed since Phase 0: a `VlmClient` protocol,
-`NullVlm` (the default, used by every test, and the no-egress proof for N-06), and a
-`ClaudeVlm` adapter gated on `ANTHROPIC_API_KEY`. `pipeline._apply_vlm_fallback` retries only
-OCR-`UNREADABLE` text fields and still runs any model-supplied value through the same
-normalization ladder — never a blind PASS.
+**The design is 2.9.** Read it before writing any of this. Summary of the decision and where
+the code stands today:
 
-**It has been deliberately dormant.** The earlier decision was to keep it as a documented
-extension point and not wire it in: OCR-`UNREADABLE` → "request a better image" is already the
-correct answer, Marcus's firewall breaks cloud VLMs, a round trip eats the 5 s budget, and a
-deterministic pipeline is easier to defend to a compliance team.
+- **Scope: three uses, none decides compliance.** (A) a vision fallback that may only convert
+  `UNREADABLE` → `REVIEW`, never to `PASS` or `FAIL`; (B) a batch triage brief, advisory,
+  one call per batch; (C) on-demand draft rejection language. Everything else stays
+  deterministic, and 2.9 lists what was deliberately excluded and why — including W-4
+  boldness, which is the strongest alternative candidate and was declined on purpose.
+- **This reverses an earlier decision, deliberately.** The VLM was kept dormant because
+  `UNREADABLE` → "request a better image" is already the correct answer, Marcus's firewall
+  breaks cloud calls, a round trip eats the 5 s budget, and deterministic verdicts are easier
+  to defend. The brief is titled *AI-Powered Alcohol Label Verification*, which is fair to
+  read as expecting a model in the loop rather than only a seam where one could go. **The old
+  reasoning didn't evaporate — it became the constraints in 2.9.**
+- **Sequencing: deskew lands first.** The degraded fixtures fail mostly on rotation and
+  keystone, which a deterministic transform fixes in tens of milliseconds. Wiring the model
+  in first would use an expensive nondeterministic call to paper over a solved problem and
+  make its value impossible to measure. The model handles the residual.
 
-**That decision is now reversed, and the reason is the brief itself** — the assessment is
-titled *AI-Powered Alcohol Label Verification*, and it is fair to read that as expecting a
-model in the loop rather than only a seam where one could go. Wiring it in is the next work.
+**What exists today** (`ttbverify/vlm.py`, `pipeline._apply_vlm_fallback`): a `VlmClient`
+protocol, `NullVlm` (the default, used by every test, and the standing proof of N-06), and a
+`ClaudeVlm` adapter gated on `ANTHROPIC_API_KEY`. The fallback retries only OCR-`UNREADABLE`
+*text* fields and runs any model value back through the normalization ladder.
 
-The reasoning above doesn't evaporate, though; it constrains *how*:
+**What that needs to become:**
 
-- Local-OCR-first stays. The model is conditional, never on the happy path (design 2.4, 6.1).
-- `NullVlm` remains the default and the whole pipeline must keep passing with no network — or
-  N-06 is broken and the tool is useless behind Marcus's firewall.
-- Anything a model returns goes through the same rules and the same ground-truth tests. A
-  model-supplied reading is still a *reading*, subject to 3.8.
-- Never `PASS` on a model's say-so alone where the deterministic path couldn't verify it.
-
-**Open questions to settle before building** (with the user): which jobs the model actually
-does — residual `UNREADABLE` fields, the degraded/keystoned photos, W-4's REVIEW band, or a
-whole-label second opinion; where it sits against the latency budget; how it's tested without
-network (recorded cassettes); and how its involvement is surfaced in the UI so an agent always
-knows which findings a model touched.
+1. the `REVIEW` cap — today a model reading can reach `PASS` through the ladder, which 2.9
+   forbids;
+2. numeric fields (`abv`, `net_contents`) in scope — currently only the four text fields are;
+3. one call per image for all missing fields, not one per field;
+4. structured output with schema validation, an explicit timeout, a pinned model id, and
+   prompts in version control;
+5. `CassetteVlm` + committed responses so this is testable with no network, and
+   `expect_observed` entries so model readings are held to 3.8 like any other reading;
+6. batch policy — bounded concurrency and a per-batch call cap that degrades to plain
+   `UNREADABLE`;
+7. UI attribution — "read by vision model — confirm", with the model id;
+8. uses B and C, which don't exist at all yet.
 
 ### Still to do
 
-Priority order: **wire in the LLM (above)** → degradation-set preprocessing (deskew /
-perspective correction — the realistic `loose` cases are already the fixtures for it) → CI →
-container + deploy. Deploy (with the user): frontend likely on **Vercel**, backend container
+Priority order: **degradation-set preprocessing** (deskew / perspective correction — the
+realistic `loose` cases are already the fixtures for it) → **wire in the model per 2.9** → CI
+→ container + deploy. Preprocessing comes first on purpose: it is deterministic, cheap, and
+fixes most of what currently reads as `UNREADABLE`, so the model is measured against the
+residual rather than against a problem we hadn't bothered to solve. Deploy (with the user): frontend likely on **Vercel**, backend container
 on **Render/Fly**; the user is handling the accounts.
 
 Web-UI polish deferred: the zoom crop for the full warning block is necessarily small; the
