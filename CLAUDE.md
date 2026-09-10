@@ -1,32 +1,33 @@
 # CLAUDE.md — TTB Label Verification: Project Brief, Design, and Build Guidance
 
-**Read this entire document before writing any code.** It is the single source of truth for
-this project. Nothing has been built yet — there is no existing codebase to discover, no
-tests to preserve, no prior commits. You are starting from an empty repository. This
-document contains (1) the original take-home brief verbatim, (2) the full technical design
-derived from it, and (3) implementation guidance — including several non-obvious pitfalls —
-distilled from earlier design exploration. Section 3's guidance describes *how to build
-this correctly*, not something already built; treat every algorithm in it as a spec to
-implement and test yourself, not as code to trust blindly.
+**Read this before changing anything.** It is the single source of truth for this project:
+(1) the original take-home brief verbatim, (2) the technical design derived from it, (3)
+implementation guidance and the pitfalls that actually bit, and (4) a build log of what
+exists today and why it is the way it is.
 
-Whenever a decision in this document seems arbitrary, it probably isn't — the rationale is
-included. If you want to deviate from something, that's fine, but re-read the "why" first.
+**This is no longer a greenfield repo.** There is a working codebase, 232 passing tests,
+three fixture corpora with per-field ground truth, and a running web app. Section 6 is the
+current state; Sections 3–5 are how to work on it without re-breaking things that have
+already been broken once.
+
+Whenever a decision here seems arbitrary, it probably isn't — the rationale is included. If
+you want to deviate, that's fine, but re-read the "why" first. Several of the sharpest
+lessons in Section 3 were learned the expensive way.
 
 ---
 
 ## How to use this document
 
-1. Read Section 1 (the brief) and Section 2 (the design) in full first.
-2. Set up the environment per Section 4.
-3. Build in the phase order in Section 2, part 8 — Phase 0 first, a rough prototype, before
-   any UI or deployment work. Each phase gets real tests before moving on; testing is not an
-   afterthought bolted on at the end.
-4. Use Section 3 as a reference while implementing — it flags the specific places where a
-   naive implementation will look correct and pass a casual glance, but fail a specific,
-   named case. Build the test for that case *before* or *alongside* the implementation, not
-   after.
-5. Update this file as you go if you make a decision worth preserving for later — it's meant
-   to keep growing as the project's memory, the same way it started.
+1. **Working on the code?** Section 6 first (what exists), then Section 5 (how to run it and
+   the invariants not to break), then Section 3 (the pitfalls) for whatever you're touching.
+2. **Trying to understand a decision?** Section 2 is the design of record. Where the build
+   diverged from it, Section 6 says so and why.
+3. **Adding a rule or a fixture?** Section 3.8 is not optional reading. Outcome-only tests
+   have already let two real defects through this project; every new check needs a test that
+   asserts *what it read*, not just what it decided.
+4. **Keep this file current.** It's the project's memory. When you make a decision worth
+   preserving — or discover that advice in here is wrong — write it down here, and correct
+   the stale guidance in place rather than leaving both versions standing.
 
 ---
 
@@ -215,6 +216,10 @@ specs. Section 2.1 traces each one back to its source.
 > stretch or a Phase 1 nice-to-have, that means *cut it without hesitation* if the core
 > isn't solid. The things that are not negotiable are in 2.1 and the testing section (7).
 
+> **This section is the design of record, written before the build.** It is still accurate
+> except where marked **As built** below. Section 6 has the current state; Section 3 has the
+> places where the design's own advice turned out to be wrong.
+
 ### 2.1 Requirements
 
 Traced to source. **(D)** marks requirements *derived* from an anecdote rather than stated
@@ -322,6 +327,11 @@ serial_number,brand_name,class_type,alcohol_content,net_contents,image_files
 Convention-based matching (`100001_front.jpg`) looks elegant and breaks the moment an
 export tool renames something. The explicit column also gives multi-image support (F-08)
 for free.
+
+> **As built:** the sample above omits `commodity`, but `LabelApplication` requires it and
+> there is no safe default — so the real required columns are `serial_number, brand_name,
+> class_type, commodity, image_files`, with the rest optional. `GET /api/manifest-template.csv`
+> emits the full header (UTF-8 with a BOM, so Excel opens it cleanly).
 
 #### Pre-flight reconciliation (F-10)
 
@@ -451,6 +461,13 @@ for batch throughput (N-02).
   for CPU-bound OCR, a per-label timeout that returns a partial result rather than hanging.
 - **Frontend:** React suggested. Three screens — single, batch, review. No settings page.
 - **Deploy:** Docker container.
+
+> **As built:** OCR is Tesseract (bake-off in the README — PaddleOCR pulls ~50 packages and a
+> runtime model download for no gain on clean renders). Backend is FastAPI; batch processing
+> uses a daemon thread + `ThreadPoolExecutor(4)` rather than asyncio (Section 6 says why).
+> Frontend is React + Vite + Tailwind, four screens (home, single, batch, review). The VLM
+> fallback is built but dormant — wiring it in is the next work, see Section 6.
+> Container and deploy are **not** done.
 
 #### Batch
 
@@ -586,6 +603,15 @@ gates on the generated corpus, not the smoke set.
 | **Performance** | N-01 and N-02 asserted as tests, not claimed in prose. | none |
 | **Smoke E2E** | A handful of end-to-end paths: upload → result, review → resolve → approve, batch streaming. Not a full E2E suite. | local |
 
+> **As built — one layer is missing from this table, and it is the most important one.**
+> *Per-field reading*: for every label, assert what each check actually **read** and from
+> which image, not just the verdict it returned. The layers above are all outcome-shaped, and
+> outcome-shaped tests let two real defects through this project. See 3.8.
+>
+> Also as built: **Smoke E2E is not automated** — the UI flows were driven and screenshotted
+> by hand during development. **Performance** is asserted as a p95 gate in the corpus tests
+> rather than as its own layer. **Integration** is folded into the API/batch contract tests.
+
 #### Determinism
 
 No test should touch the network. Stub or record/replay any VLM calls — deterministic CI,
@@ -640,6 +666,12 @@ not the whole repo.
 smoke E2E → batch. **The review screen and the warning checks are never cut** — they are the
 two things this brief actually cares about.
 
+> **As built:** nothing on the cut list was cut except *property-based tests* and *automated
+> smoke E2E*. Batch shipped in full, including CSV export. Still outstanding from the Phase 1
+> list: the degradation set's **preprocessing** (the fixtures exist, the deskew doesn't), CI,
+> and the container + deployment. The VLM fallback is built behind its interface with the
+> no-network path tested, but is not yet wired in — that is the next work (Section 6).
+
 ### 2.8 Trade-offs and assumptions to carry into the README
 
 1. **Local OCR first, vision model conditionally.** Trades some accuracy on difficult images
@@ -665,11 +697,12 @@ two things this brief actually cares about.
 
 ## Section 3 — Implementation guidance and known pitfalls
 
-This section is **specification, not delivered code.** It exists because a first
-implementation pass of this exact design surfaced specific, non-obvious failure modes.
-Build your own implementation and your own tests — but build the test for each pitfall
-below *before or alongside* the code that could trigger it, because each one is the kind of
-bug that looks fine in a demo and is wrong on a specific, checkable case.
+Every pitfall below is now **implemented and guarded by a test** — this section is a map of
+where the sharp edges are, not a to-do list. Two of them (3.2 and 3.4) originally gave advice
+that turned out to be *wrong*; those are corrected in place, with the original reasoning kept
+so the correction makes sense. Don't re-implement the superseded versions.
+
+3.8 is the most important entry and was learned last.
 
 ### 3.1 OCR must return word-level boxes, confidences, and original casing
 
@@ -683,7 +716,7 @@ highlighting are both impossible to build correctly later.
 **Test this directly:** OCR a label with a known mixed-case string and assert the returned
 text preserves the case, and that each word has a plausible non-zero-area box.
 
-### 3.2 Brand/class-type matching needs a prominence filter, not just fuzzy matching
+### 3.2 A brand match must be a *line*, not a fragment — and never guess which line
 
 **The pitfall:** if you search the entire label's OCR output for the declared brand name
 string, you will get false approvals. A label can legitimately contain the *producer's*
@@ -696,10 +729,35 @@ this (a label whose large-type brand is clearly wrong, but whose fine print else
 happens to contain a string that fuzzy-matches the declared brand) and confirm your
 implementation reports `FAIL`, not `PASS`.
 
-**The fix:** restrict brand and class/type matching to text above some prominence threshold
-— e.g., text whose line height is within some ratio of the largest text height on the
-label. Brand names are display type; a match found only in fine print should not count.
-Tune the specific ratio against your fixture corpus rather than guessing a number.
+**The fix that does NOT work — two versions of it were built and both were wrong.** The
+tempting move is to decide which text is "display type" by size: keep only text whose line
+height clears some ratio of the largest text on the label, or (worse) declare the first big
+line to be the brand. Both are font- and layout-dependent:
+
+* **Box height is not type size.** Copperplate-style faces render short caps, so a 72 px
+  display brand can measure a *smaller* OCR bounding box than a 44 px Georgia class/type
+  line. On `r05_brand_decoy` this made the brand check return the class/type line verbatim.
+* **Position assumes a layout.** "The first prominent line is the brand" breaks on the same
+  label, where a small `ESTABLISHED 1897` tagline clears the cutoff and lands first.
+
+**The fix that works** (`rules._locate_text`): search *every* run of consecutive words on
+every page, and gate the match on how it sits in its line rather than on how big it is. A
+display match is admissible only if it
+
+1. covers at least `_DISPLAY_MIN_COVERAGE` (0.6) of its own line — a brand *is* a line;
+   "Old Tom Distillery" inside "Produced by … under license from Old Tom Distillery,
+   Bardstown, Kentucky" is three words of a twelve-word sentence — and
+2. isn't fine print (`_FINE_PRINT_FRACTION`, 0.45 of the page's tallest line) — a second,
+   independent guard.
+
+Coverage is the load-bearing signal and it's font-free and layout-free. The result carries a
+status: `matched`, `only_in_fine_print` (FAIL, and the box points at the buried occurrence so
+the agent can see the decoy), or `not_found` (FAIL, `observed` is `None`). **On a FAIL the
+tool must never invent what the label "probably" says** — an earlier version guessed and
+confidently reported `ESTABLISHED 1897` as a brand.
+
+Fixtures: `brand_mismatch` (clean corpus) and `r05_brand_decoy` (realistic) both plant the
+declared brand in the bottler statement while the prominent brand is something else.
 
 ### 3.3 The warning-wording check needs two bands, not exact match
 
@@ -720,7 +778,7 @@ noise-injection step (swap a couple of characters) should land on `REVIEW` at wo
 silently `PASS` and never wrongly `FAIL`; a label with an actual reworded sentence should
 `FAIL`.
 
-### 3.4 Bold detection cannot be reliably automated — don't try to threshold it
+### 3.4 Bold detection: compare against the statement's own regular text, and only ever auto-PASS
 
 **The pitfall, worth understanding before you build this:** the obvious approach is some
 kind of stroke-weight or ink-density heuristic — measure how much of the bounding box of
@@ -735,13 +793,31 @@ threshold against a small fixture set, it will look like it's working — and th
 silently on a case the fixture set didn't cover, which is exactly the failure mode this
 whole project is trying to avoid.
 
-**The fix:** don't try to auto-decide this in v1. Route it to human review every time,
-unconditionally, with the cropped warning-header image shown next to the reference so a
-person can answer in one glance. This is not a cop-out — it is the single clearest and most
-defensible example of "the machine surfaces evidence, the human makes the judgment call,"
-and it's worth explicitly calling out in the README as a considered design decision rather
-than a gap. If you want to build a density measurement anyway, that's fine — show the
-number to the agent as supporting evidence — but never let it alone decide `PASS` or `FAIL`.
+**That diagnosis is right; the original conclusion — "never auto-decide, route every warning
+to a human" — was too pessimistic and has been superseded.** Sending an agent to eyeball the
+boldness of every compliant label is bad UX, and it was ~2/3 of all review items.
+
+**What actually works** (`warning.assess_boldness`): the confound is *capitalization*, so
+remove it by comparing like with like. Don't measure the header against an absolute
+threshold or against the mixed-case body — measure it against **the regular-weight remainder
+of the same statement**, which is guaranteed present, in the same family and at the same
+size. The estimator is a stroke thickness (`2 * ink area / ink perimeter`), height-normalized,
+computed on a 4x upscale so a 1–2 px stroke isn't lost to quantization, and aware of
+light-on-dark labels.
+
+Calibrated on `fixtures/boldness.py` — 50 matched cases, 6 families x regular/bold x 2 sizes
+x clean/degraded, plus a heavy-display and a thin-light adversarial — regular headers land at
+1.29–1.46x the body and genuine bold at 1.64x and up. `_BOLD_CONFIRM_RATIO = 1.55` sits in
+that gap.
+
+**The asymmetry is the important part: W-4 auto-PASSes or it REVIEWs. It never auto-FAILs.**
+A false approval is the expensive error; a false review costs a glance. So "confidently
+heavier" is a verdict the machine may reach alone, and everything else — including
+"probably not bold" — goes to a human with the measurement attached. On the calibration set:
+0 regular headers ever auto-PASS, 25/25 decidable cases correct, ~48% auto-decided.
+
+If you widen the confirm band, the gate that must not move is *0 regular headers auto-PASSed*
+across all 50 cases.
 
 ### 3.5 Net contents and ABV need numeric comparison, not string comparison
 
@@ -766,205 +842,222 @@ batch. Each item should be processed independently (isolate exceptions per item)
 single item's failure should surface as that item's own `UNREADABLE`/error state in the
 results table, with everything else completing normally.
 
+### 3.8 Asserting outcomes is not testing — assert what each check *read*
+
+**This is the one that cost the most, and it is the reason 3.2 stayed broken through two
+rewrites.** The accuracy gates asserted verdict strings — `brand: FAIL`, `abv: PASS` — and
+nothing else. That is far weaker than it looks, because **a verdict can be right for entirely
+the wrong reason**, and the suite cannot tell the difference. Two real defects sat there
+green for days:
+
+* `r05_brand_decoy`'s brand name was rendered *off the edge of the label*. The generator
+  centred display text without a width check, so `x` went negative and `IRONWOOD RESERVE` was
+  drawn across the border. Tesseract never saw it. The case still "passed": `brand: FAIL` was
+  the expected verdict, and the brand did fail — because it was invisible, not because it
+  mismatched.
+* The brand and class/type checks were reading each other's lines. Same verdicts, same green
+  suite.
+
+**The fix, and the standard for anything added from here:**
+
+1. **Ground truth records what the label says, per field, and on which image.** Every
+   generated case carries `expect_observed`: `{check_id: {status, text, printed, image}}`
+   with status `matched` / `only_in_fine_print` / `not_found`. The generators emit it — they
+   drew the label, so they know.
+2. **`tests/test_field_reading.py` asserts the pipeline against it** — currently 28
+   undegraded labels x 7 categories. Text is compared through the normalization ladder so
+   OCR noise is tolerated; the *image index* is asserted exactly.
+3. **The generators audit their own output.** `fixtures.audit_corpus()` runs after rendering:
+   every field the ground truth claims is printed must be legible in that image's OCR, or
+   generation exits non-zero. A test proves the audit actually fires, so it can't rot into a
+   no-op.
+4. **Degraded fixtures are exempt from text assertions** (some fields genuinely can't be read
+   through a keystone) but are still bound by the no-false-approval gates. Pinning current
+   behaviour there would just bake in the limitation.
+
+**Don't add a corpus, a fixture, or a check without all four.** `report.py` prints the same
+per-field table, so the evidence is visible without running pytest.
+
 ---
 
-## Section 4 — Environment and getting started
+## Section 4 — Environment
 
-- Language/framework choice is yours (the brief explicitly says so) — Python + FastAPI +
-  React is a reasonable default that fits the async/streaming requirements cleanly, but
-  don't feel constrained to it.
-- If using Tesseract for OCR: `brew install tesseract` (Mac) or
-  `sudo apt install tesseract-ocr` (Linux). It needs to be callable in TSV mode — see 3.1.
-- Use `pytest` (or your framework's equivalent) from the start; don't bolt tests on later.
-- No test should ever require network access — see 2.6's "Determinism" note. This also
-  doubles as your proof of the no-egress fallback path (N-06).
-- Initialize git and commit early and often; the deliverable is a source repository, and a
-  clean, legible commit history is part of "code quality and organization" in the
-  evaluation criteria.
+Built and verified on **Windows 11, Python 3.13** in `.venv`, **Tesseract 5.4** installed with
+`winget install UB-Mannheim.TesseractOCR`. Nothing is Windows-specific; the OCR wrapper finds
+the binary on `PATH`, via `TESSERACT_CMD`, or at the standard install location on each OS.
 
-## Section 5 — Suggested first session
+```bash
+python -m venv .venv && .venv\Scriptsctivate     # source .venv/bin/activate elsewhere
+pip install -r requirements-dev.txt
+cd web && npm install && npm run build && cd ..     # frontend -> web/dist
+```
 
-1. Read this entire document once through.
-2. Set up the repo skeleton and environment.
-3. Write the fixture generator first (Section 2.6), before any pipeline code — you want
-   ground truth to test against from day one.
-4. Build the normalization ladder and the ABV/net-contents parsers as pure, fully
-   unit-tested functions (Section 2.3), independent of OCR.
-5. Wire up OCR (Section 3.1), confirm it preserves casing and returns usable boxes.
-6. Build the warning checks (Section 2.3, health warning; Sections 3.3 and 3.4 for the two
-   known pitfalls).
-7. Assemble the rules engine and pipeline; run the fixture corpus through it; confirm the
-   accuracy gates (Section 2.6) before moving to any UI work.
-8. Only then start Phase 1 — the review screen (Section 2.5) first, ahead of anything else
-   in that phase.
+- **Runtime deps** (`requirements.txt`): Pillow, FastAPI, uvicorn, python-multipart, and
+  `anthropic` (only used if a key is present — see the VLM note in Section 6).
+- **Dev** (`requirements-dev.txt`): adds pytest and httpx. `ruff` is used for linting but is
+  deliberately not pinned as a dependency.
+- **No test touches the network**, ever. That's both determinism and the standing proof of the
+  no-egress fallback (N-06). Tests that need the `tesseract` binary are marked `corpus` and
+  skip cleanly without it.
+
+## Section 5 — Working on this codebase
+
+```bash
+python -m fixtures.generate      # clean corpus  -> fixtures/images/ + cases.json
+python -m fixtures.realistic     # realistic corpus (needs system fonts)
+python -m fixtures.boldness      # W-4 calibration corpus
+pytest                           # 232 tests
+python report.py                 # all gates + the per-field reading table + overlays
+python -m service                # the web app on http://127.0.0.1:8000
+python -m ttbverify --demo brand_mismatch     # single label from the CLI
+```
+
+`report.py` exits non-zero if any gate fails, so it doubles as a pre-commit check.
+
+**Where things live**
+
+| | |
+|---|---|
+| `ttbverify/` | the verification core — pure, no I/O except `ocr.py`. `rules.py` is the field engine, `warning.py` is W-1..W-4, `pipeline.py` orchestrates. |
+| `service/` | FastAPI. `app.py` (single label + static), `routes_batch.py` + `batch.py` + `manifest.py` (batch). In-memory stores only. |
+| `web/src/screens/` | the three screens. `ReviewScreen` is shared by the single-label and batch paths. |
+| `fixtures/` | the three generators and their committed ground truth. |
+| `samples/` | ready-made batch ZIPs for trying the app. |
+
+**Invariants — breaking any of these is a bug, not a trade-off**
+
+1. **Never emit `PASS` for a check that wasn't actually performed.** OCR unavailable,
+   confidence below floor, field not located → `UNREADABLE` or `REVIEW`. Never a silent pass.
+2. **Zero false approvals** on every corpus. This is the one gated number that never relaxes.
+3. **`NOT_DECLARED` ≠ `UNREADABLE` ≠ `FAIL`.** Nothing declared is not a mismatch (3.6).
+4. **Never guess which line is which field** (3.2), and never invent `observed` text on a FAIL.
+5. **Every check needs a test that asserts what it read**, not just what it decided (3.8).
+6. **W-4 auto-PASSes or REVIEWs; it never auto-FAILs** (3.4).
 
 ---
 
 ## Section 6 — Build log (kept current as the project's memory)
 
-### Phase 0 — complete
+### Where it stands
 
-Verification core, CLI-driven, real Tesseract OCR. `python -m fixtures.generate && pytest &&
-python report.py` reproduces the gates: **0 false approvals, 0 expectation mismatches,
-warning recall 1.0, single-label p95 ~417 ms** against the 5000 ms budget. 90 tests.
+Phase 0 and most of Phase 1 are done. `python -m fixtures.generate && python -m
+fixtures.realistic && python -m fixtures.boldness && pytest && python report.py` reproduces
+everything below from scratch.
 
-Environment as built: Windows 11, Python 3.13 in `.venv`, Tesseract 5.4 via
-`winget install UB-Mannheim.TesseractOCR`. `requirements.txt` (Pillow + anthropic) /
-`requirements-dev.txt` (adds pytest). `ruff` used for linting, not pinned as a dep.
+| | |
+|---|---|
+| Verification core | brand, class/type, ABV, proof, net contents, producer, origin + W-1..W-4 |
+| Interfaces | CLI (`python -m ttbverify`), FastAPI service, React UI (single label **and** batch) |
+| Corpora | clean 17 cases · realistic 16 · W-4 boldness 50 — all with per-field ground truth |
+| Tests | **232**: field-reading 58, boldness 29, realistic 27, parsers 23, corpus 21, normalize 19, rules 12, warning 12, manifest 8, batch API 8, API 8, pipeline 7 |
+| Gates (all green) | 0 false approvals · 0 expectation mismatches · every field reads its own text · warning recall 1.0 · 0 regular headers auto-PASS W-4 |
+| Latency | clean p50/p95 ~458/463 ms · realistic p95 ~721 ms (budget 5000 ms, N-01) |
+| Review rate | 3.3% (reported, not gated) |
 
-Decisions made during implementation, to preserve:
+**Not built:** degradation preprocessing (deskew / perspective), CI, container, deployment.
+The VLM interface exists but is dormant — see "AI / LLM" below, which is the next piece of work.
 
-- **Check IDs are short slugs** (`brand`, `class_type`, `abv`, `proof`, `net_contents`,
-  `producer`, `origin`, `warn_present`, `warn_text`, `warn_case`, `warn_bold`). They appear
-  in the CLI, the overlay PNGs, and will key the review-screen rows. `proof` is its own
-  check, emitted only when proof is printed on the label.
-- **`Outcome` verdict precedence** (`models._VERDICT_ORDER`): FAIL > UNREADABLE > REVIEW >
-  PASS > NOT_DECLARED. `VerificationResult.verdict` is the worst present.
-- **`rules.PROMINENCE = 0.55`** — tuned against the corpus (§3.2). Brand renders at 64 px,
-  class/type at 44 px, fine print at 18 px; 0.55 cleanly includes class/type and excludes
-  fine print. `brand_mismatch` is the fixture that guards it. Re-run `report.py` if you
-  touch this — the false-approval gate depends on it.
-- **W-2 OCR-noise floor = 0.75** (`warning._OCR_NOISE_FLOOR`), alignment via
-  `difflib.SequenceMatcher` on casefolded, punctuation-stripped tokens so an omitted or
-  inserted word shows as exactly that rather than cascading.
-- **ABV bands** (`rules`): exact ≤ 0.05, near-miss ≤ 0.5 → REVIEW, else FAIL.
-  **Net contents**: ≤ 1% → PASS, ≤ 5% → REVIEW, else FAIL. **Proof tolerance** ±1.01
-  (`parsers.PROOF_TOLERANCE`) to allow half-a-point of label rounding.
-- **OCR bake-off**: Tesseract chosen over PaddleOCR for Phase 0 — Paddle pulls ~50 packages
-  + a runtime model download (fights N-06) for no accuracy gain on clean synthetic renders.
-  Revisit for the Phase 1 degradation set, or lean on the VLM pass there. Writeup in README.
-- **Fixture generator gotcha**: `Sheet.wrapped()` must place each word at an explicit x with
-  real inter-word gaps — an earlier version let words render touching and Tesseract read
-  each line as one space-less token. If OCR output suddenly loses spaces, look here first.
-- **VLM**: `vlm.py` has the full interface, `NullVlm` (default, used by every test), and
-  `ClaudeVlm` (reads `ANTHROPIC_API_KEY`, model `claude-sonnet-5`). `pipeline._apply_vlm_
-  fallback` retries only OCR-`UNREADABLE` text fields and still runs the VLM value through
-  the normalization ladder — never a blind PASS. Not exercised by Phase 0 tests (no
-  network); Phase 1 adds a recorded-cassette test.
+### Decisions and tunables to preserve
 
-Box-quality follow-ups from the report.py overlays — **fixed** (commit `2aea4ba`):
-`_locate_text` now falls back to the most prominent candidate line on a FAIL for a
-prominence-filtered field (so `brand_mismatch` boxes "RUSTY ANCHOR RUM", not a warning
-fragment); `_locate_pattern` boxes only the matched OCR line. `report.py` overlay still
-draws page 0 only — the web UI handles per-page overlays itself.
+- **Check IDs are short slugs** — `brand`, `class_type`, `abv`, `proof`, `net_contents`,
+  `producer`, `origin`, `warn_present`, `warn_text`, `warn_case`, `warn_bold`. They key the
+  review-screen rows, the CSV export and the overlay tags. `proof` is its own check, emitted
+  only when proof is actually printed on the label.
+- **Verdict precedence** (`models._VERDICT_ORDER`): FAIL > UNREADABLE > REVIEW > PASS >
+  NOT_DECLARED. `VerificationResult.verdict` is the worst outcome present.
+- **Display admissibility** (`rules`): `_DISPLAY_MIN_COVERAGE = 0.6`, `_FINE_PRINT_FRACTION =
+  0.45`. See 3.2 — do not replace these with a type-size or line-position heuristic.
+- **Fuzzy tier** `normalize.FUZZY_REVIEW_THRESHOLD = 0.92`; **OCR confidence floor**
+  `ocr.MIN_WORD_CONF = 45`; OCR upscales to 1600 px wide before recognition.
+- **W-2 OCR-noise floor** `warning._OCR_NOISE_FLOOR = 0.75`, aligned with
+  `difflib.SequenceMatcher` over casefolded, punctuation-stripped tokens, so an omitted or
+  inserted word reports as exactly that instead of cascading. Trailing tokens past the end of
+  the reference are dropped — otherwise a barcode number printed under the warning counts as
+  "extra words" and fails a compliant label.
+- **W-4** `warning._BOLD_CONFIRM_RATIO = 1.55` on a 4x upscale. See 3.4.
+- **Numeric bands**: ABV exact ≤ 0.05, near-miss ≤ 0.5 → REVIEW, else FAIL. Net contents
+  ≤ 1% → PASS, ≤ 5% → REVIEW, else FAIL. `parsers.PROOF_TOLERANCE = 1.01` allows half a point
+  of label rounding.
+- **`_rank` breaks ties on *literal* (pre-normalization) similarity.** When the same value
+  appears twice and both normalize to a match, the more literal one wins — that points the
+  producer check at the bottler statement rather than the brand line on labels where the
+  distillery is also the brand.
+- **OCR bake-off**: Tesseract over PaddleOCR. Paddle pulls ~50 packages plus a runtime model
+  download (which fights N-06) for no accuracy gain on clean renders. Revisit only for the
+  degradation set. Writeup in the README.
+- **Batch manifests require a `commodity` column** — the design's sample manifest (2.2) omits
+  it, but `LabelApplication` needs it and there is no safe default.
+- **Batch processing runs in a plain daemon thread** plus a `ThreadPoolExecutor(4)`, *not* an
+  asyncio task: a bare `create_task` background job does not progress between `TestClient`
+  requests, and detached tasks can be garbage-collected mid-run. The SSE endpoint polls the
+  mutating batch state.
+- **Generator gotchas**, both of which shipped broken once: `Sheet.wrapped()` must place each
+  word at an explicit x with real inter-word gaps (touching words OCR as one space-less
+  token), and all centred display text must shrink to fit (text drawn past the margin is
+  invisible to OCR). `fixtures.audit_corpus()` now catches both.
 
-### Phase 1 — in progress
+### History (chronological; superseded entries marked)
 
-**Done: single-label web path (the §2.5 priority).**
+1. **Phase 0** — verification core, CLI, Tesseract via TSV, clean corpus, accuracy gates.
+   90 tests.
+2. **Single-label web path** (§2.5 priority) — FastAPI + the split-pane review screen.
+3. **Realistic corpus** (`143ee1a`, `7aed4a0`) — colour, serif display faces, framed borders,
+   boxed/rotated warnings, photo degradation. Caught four real bugs: W-2 counting
+   post-warning text, no cross-line matching for wrapped brands, an OCR TSV decode crash on
+   non-cp1252 bytes, and the first prominence overfit.
+4. **W-4 confidence-gated boldness** (`3e1a3cb`) — replaced "always REVIEW". Review rate
+   9.9% → 2.3%.
+5. **Batch, full scope** — manifest + pre-flight reconciliation, streamed queue, per-row
+   review reusing the same split-pane, CSV export. 171 tests.
+6. **Per-field reading tests + display admissibility** (`b61e977`) — the most important
+   correction in the project; see 3.2 and 3.8. 232 tests.
 
-- `service/` — FastAPI. `POST /api/verify` (multipart: declared-fields JSON + image
-  uploads) runs the pipeline and returns `{session_id, result, images}`. In-memory
-  `SessionStore` (N-05), TTL-swept. `/api/sessions/{id}` (+ `/images/{i}` served from
-  memory), `/decisions` (accept|reject on REVIEW items; reports `can_finalize` — FAIL
-  items don't block), `/finalize` (approve|reject|request_image), `/health`. Serves
-  `web/dist` as an SPA when built. 8 contract tests in `tests/test_api.py` (marked
-  `corpus`, need tesseract).
-- `web/` — Vite + React + Tailwind v4. `SingleLabelForm` → `ResultScreen` (one primary
-  action per design 2.5.1) → `ReviewScreen` split-pane (`LabelViewer` does the
-  boxed/dimmed image + zoom crop, two-way selection, front/back tabs) → `DoneScreen`.
-  Build: `cd web && npm install && npm run build`; the API then serves it on `:8000`.
-  Dev: `npm run dev` on `:5173` proxies `/api`.
+> **Superseded — do not resurrect.** `rules.PROMINENCE = 0.55` (a fraction of the tallest
+> word); then `BRAND_PROMINENCE = 1.8` / `SUBHEAD_PROMINENCE = 0.9` (multiples of the median
+> word height); then `_blocks()` merging adjacent similar-height lines with a "most prominent
+> line" fallback on FAIL; then first-prominent-line tiering. All four were attempts to guess
+> which line is the brand from geometry. All four were wrong, in ways only the per-field
+> reading tests exposed. `_locate_text` no longer guesses.
 
-**Done: realistic fixture corpus** (commits `143ee1a`, `7aed4a0`).
+### AI / LLM — the next piece of work
 
-- `fixtures/realistic.py` → `fixtures/cases_realistic.json` + `fixtures/images_realistic/`
-  (committed, not gitignored — the renders need system fonts). 16 labels with colour,
-  gradients, framed borders, Copperplate/Baskerville/slab display faces, a medallion, a
-  barcode, boxed and one rotated (sidebar) warning; ~half then degraded (rotate, keystone
-  via `Image.QUAD`, vignette, blur, JPEG). Graded `exact` (styling only — full match) vs
-  `loose` (degraded — a clean field may soften, a real defect must never PASS).
-- `tests/test_realistic.py` (27 tests, marked `corpus` + `realistic`). `report.py` prints
-  a REALISTIC CORPUS section.
-- It caught real bugs, now fixed: **prominence filter overfit** (was a fraction of the
-  single tallest word → excluded real class/type text; now a multiple of the *median*
-  height, `BRAND_PROMINENCE=1.8` / `SUBHEAD_PROMINENCE=0.9`); **no cross-line matching**
-  (a wrapped brand couldn't be assembled → `_blocks()` groups adjacent prominent lines);
-  **W-2 counted post-warning label text** (barcode digits after the statement → false
-  FAIL; `compare_wording` now drops trailing tokens with no reference counterpart, and
-  `_BLOCK_SPAN` is `+6` not `+12`); **OCR TSV decode** crashed on non-cp1252 bytes (now
-  `encoding="utf-8", errors="replace"`).
-- Result: 9/9 exact match, 0 false approvals across all 16, p95 ~630 ms. The remaining
-  `loose` gaps are all rotation/perspective/low-light → the degradation-set + deskew work.
+The VLM interface (`ttbverify/vlm.py`) has existed since Phase 0: a `VlmClient` protocol,
+`NullVlm` (the default, used by every test, and the no-egress proof for N-06), and a
+`ClaudeVlm` adapter gated on `ANTHROPIC_API_KEY`. `pipeline._apply_vlm_fallback` retries only
+OCR-`UNREADABLE` text fields and still runs any model-supplied value through the same
+normalization ladder — never a blind PASS.
 
-**Done: W-4 boldness — confidence-gated auto-confirm** (commit `3e1a3cb`). Replaces
-"always REVIEW". `warning.assess_boldness()` measures a height-normalized stroke thickness
-(`2*area/perimeter` on a 4x upscale, light-on-dark aware) for the "GOVERNMENT WARNING"
-header and for the statement's own regular-weight first line, and takes the ratio. Auto-PASS
-at `_BOLD_CONFIRM_RATIO = 1.55` (regular headers measure 1.29-1.46x, bold 1.64x+ on the
-calibration set); otherwise REVIEW; **never auto-FAIL**. `fixtures/boldness.py` → 50 matched
-cases (6 families x reg/bold x 2 sizes x clean/degraded + 2 adversarial), committed images.
-`tests/test_boldness.py` — hard gate is "a regular header never auto-PASSes" (holds on all
-50); 25/25 decidable correct; 48% of decidable auto-decides. Ripple: clean + realistic
-`warn_bold` expectations flipped to PASS where the header is bold; `warning_titlecase` /
-`warning_nonbold` stay REVIEW; new `abv_nearmiss_nonbold` fixture for the review-flow tests.
-**Clean-corpus review rate 9.9% → 2.3%** — a compliant label now verifies straight to PASS.
+**It has been deliberately dormant.** The earlier decision was to keep it as a documented
+extension point and not wire it in: OCR-`UNREADABLE` → "request a better image" is already the
+correct answer, Marcus's firewall breaks cloud VLMs, a round trip eats the 5 s budget, and a
+deterministic pipeline is easier to defend to a compliance team.
 
-**Done: batch — full scope** (commits around `feat: batch backend` / `feat: batch UI`).
+**That decision is now reversed, and the reason is the brief itself** — the assessment is
+titled *AI-Powered Alcohol Label Verification*, and it is fair to read that as expecting a
+model in the loop rather than only a seam where one could go. Wiring it in is the next work.
 
-- `service/manifest.py` parses `manifest.csv` (explicit `image_files` column — `commodity`
-  is a *required* column here, unlike the design's sample) and `reconcile()`s it against the
-  ZIP: missing/orphan images, dup serials, unparseable declared values (§3.4). Blank
-  template has a BOM for Excel.
-- `service/batch.py` — in-memory `BatchStore`/`Batch`/`BatchRow` (N-05); `queue_order()`
-  sorts ERROR/FAIL/UNREADABLE/REVIEW to the top (§5.4).
-- `service/routes_batch.py` — `POST /api/verify/batch` (ZIP → pre-flight), `/start`
-  (processing runs in a **plain daemon thread** + a `ThreadPoolExecutor(4)`; NOT an asyncio
-  task — a bare `create_task` background job does not progress between `TestClient` requests,
-  and detached tasks can be GC'd), SSE `/events` (async gen polls the mutating batch state),
-  `/rows/{serial}[/decisions|/finalize|/images/{i}]`, `/export.csv`.
-- Frontend: `Home` (single vs batch), `BatchUpload`, `BatchPreflight`, `BatchQueue` (SSE +
-  1.5 s polling fallback, FAIL/REVIEW on top, CSV export link). `ReviewScreen` was refactored
-  to `(data, onDecide, onFinalize, nav?)` so the *same* split-pane serves a single-label
-  session and a batch row; batch review gets a "1 of N" prev/next header and advances to the
-  next exception on finalize.
-- `rules._blocks` now only merges adjacent lines of *similar height* — a wrapped brand's box
-  no longer swallows the smaller class/type line.
-- Tests: `test_manifest.py` (8), `test_batch_api.py` (8, builds ZIPs in memory). **Total: 171.**
+The reasoning above doesn't evaporate, though; it constrains *how*:
 
-**VLM decision (with the user):** keep the `VlmClient` interface + `NullVlm` default as a
-documented, dormant extension point — do NOT wire `ClaudeVlm` into the running pipeline and
-**cut the VLM cassette test** from the plan. Rationale: OCR-`UNREADABLE` → "request a better
-image" is already the correct answer; Marcus's firewall breaks cloud VLMs; the latency
-budget; auditability. Higher-value future VLM use would be W-4 / residual degradation, not
-general field reading.
+- Local-OCR-first stays. The model is conditional, never on the happy path (design 2.4, 6.1).
+- `NullVlm` remains the default and the whole pipeline must keep passing with no network — or
+  N-06 is broken and the tool is useless behind Marcus's firewall.
+- Anything a model returns goes through the same rules and the same ground-truth tests. A
+  model-supplied reading is still a *reading*, subject to 3.8.
+- Never `PASS` on a model's say-so alone where the deterministic path couldn't verify it.
 
-**Done: per-field reading tests + display admissibility** (commit `b61e977`). The single
-most important correction so far, and worth reading before touching `rules.py`:
+**Open questions to settle before building** (with the user): which jobs the model actually
+does — residual `UNREADABLE` fields, the degraded/keystoned photos, W-4's REVIEW band, or a
+whole-label second opinion; where it sits against the latency budget; how it's tested without
+network (recorded cassettes); and how its involvement is surfaced in the UI so an agent always
+knows which findings a model touched.
 
-- **The outcome-only tests were the bug.** They asserted verdict strings and nothing else, so
-  two real defects sat there passing: `r05_brand_decoy`'s brand ran off the edge of the label
-  (`Sheet.caps()` centred without a width check, x went negative, Tesseract never saw it) and
-  the brand/class checks were reading each other's lines. Both produced the *expected* verdict
-  for entirely the wrong reason.
-- **Never guess which line is which field.** Two successive attempts did — first by OCR
-  bounding-box height, then by reading position ("first prominent line is the brand"). Box
-  height is font-dependent: Copperplate renders short caps, so a 72px display brand measures a
-  *smaller* box than a 44px Georgia class line. Position assumes a layout. Both are the kind of
-  bet a compliance tool must not make.
-- **What replaced it** (`rules._locate_text`): search every run of words on every page; a
-  display match is admissible only if it covers ≥ `_DISPLAY_MIN_COVERAGE` of its own line
-  (a brand is a line; "Old Tom Distillery" inside a twelve-word bottler sentence is not) and
-  isn't fine print (`_FINE_PRINT_FRACTION` of the page's tallest line). Font-free, layout-free,
-  and it *is* design 3.2's actual signal. Statuses: `matched` / `only_in_fine_print` (FAIL,
-  boxed on the buried occurrence so the agent sees the decoy) / `not_found` (FAIL, `observed`
-  is None — the tool never invents what the label "probably" says).
-- `_rank` breaks ties on *literal* similarity so the producer check boxes the bottler
-  statement, not the brand line, when the distillery is also the brand.
-- **Ground truth gained `expect_observed`** — per case, per check, what the label says and on
-  which image. `tests/test_field_reading.py` asserts it for 28 undegraded labels x 7
-  categories. Degraded (rotation/keystone/low-light) cases are exempt from text assertions but
-  still bound by the no-false-approval gates.
-- **Generators shrink display text to fit** and run `fixtures.audit_corpus()` after rendering:
-  every field the ground truth claims is printed must be legible on that image, or generation
-  exits non-zero. A test proves the audit actually fires. **Any new fixture gets this for
-  free — don't add a corpus without it.**
-- 232 tests. Review rate 3.3%.
+### Still to do
 
-**Still to do**, priority order: **degradation-set preprocessing (deskew / perspective
-correction) — the realistic `loose` cases are the fixtures for it** → CI → container +
-deploy. Deploy (with the user): "figure it out with the browser counterpart" — frontend
-likely on **Vercel**, backend container on **Render/Fly**.
+Priority order: **wire in the LLM (above)** → degradation-set preprocessing (deskew /
+perspective correction — the realistic `loose` cases are already the fixtures for it) → CI →
+container + deploy. Deploy (with the user): frontend likely on **Vercel**, backend container
+on **Render/Fly**; the user is handling the accounts.
 
-Web-UI polish deferred: the zoom crop for the full warning block is necessarily small;
+Web-UI polish deferred: the zoom crop for the full warning block is necessarily small; the
 right pane has whitespace below the image on wide screens; no keyboard nav between review
 items yet.
