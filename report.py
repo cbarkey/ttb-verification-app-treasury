@@ -168,7 +168,7 @@ def _field_reading_report(engine) -> bool:
         return True
 
     fields = ["brand", "class_type", "abv", "proof", "net_contents",
-              "producer", "address", "origin"]
+              "producer", "origin"]
     bar = "=" * 92
     print()
     print(bar)

@@ -1190,7 +1190,7 @@ everything below from scratch.
 
 | | |
 |---|---|
-| Verification core | brand, class/type, ABV, proof, net contents, producer, **address**, origin + W-1..W-4 |
+| Verification core | brand, class/type, ABV, proof, net contents, producer, origin + W-1..W-4 |
 | Preprocessing | deskew / keystone, scored per image, applied only when it wins (3.9) |
 | AI | vision fallback (capped at REVIEW), batch triage brief, drafted rejection notices — 2.9 |
 | Interfaces | CLI (`python -m ttbverify`), FastAPI service, React UI (single label **and** batch) |
@@ -1205,10 +1205,15 @@ everything below from scratch.
 ### Decisions and tunables to preserve
 
 - **Check IDs are short slugs** — `brand`, `class_type`, `abv`, `proof`, `net_contents`,
-  `producer`, `address`, `origin`, `warn_present`, `warn_text`, `warn_case`, `warn_bold`.
-  `address` was added late, after auditing against the brief: it lists "name **and address**
-  of bottler/producer" as one element, and the address was being accepted by the schema, the
-  manifest and the API while never being verified. They key the
+  `producer`, `origin`, `warn_present`, `warn_text`, `warn_case`, `warn_bold`.
+
+> **Tried and pulled: an `address` check.** The brief lists "name **and address** of
+> bottler/producer" as one element and only the name is verified, so this was implemented.
+> It works on Windows and fails on Linux: the address sits at the end of a bottler statement
+> that wraps, and where it wraps depends on the font, so `Key West,` and `FL` land on
+> different OCR lines. `_windows` spans one line break but not reliably for a three-token
+> value at the end of a sentence. Pulled rather than shipped half-working; the gap is stated
+> in the README. Widening the cross-line window is the real fix. They key the
   review-screen rows, the CSV export and the overlay tags. `proof` is its own check, emitted
   only when proof is actually printed on the label.
 - **Verdict precedence** (`models._VERDICT_ORDER`): FAIL > UNREADABLE > REVIEW > PASS >

@@ -7,6 +7,7 @@ field value is known because we drew it.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 
@@ -200,7 +201,14 @@ def _legible(check_id: str, printed: str, lines: list[str], page_text: str) -> b
     want_text = punct_norm(printed)
     if check_id in ("brand", "class_type"):
         return any(want_text == line for line in lines)
-    return any(want_text in line for line in lines)
+    # Non-display fields may wrap. A bottler statement is a sentence, and where
+    # it breaks depends on the font: on Linux "…Key West," and "FL" land on
+    # different OCR lines, on Windows they don't. `rules._windows` already spans
+    # one line break for exactly this reason, so the audit has to as well —
+    # otherwise it is stricter than the engine it audits and fails a label that
+    # verifies correctly.
+    spans = [f"{a} {b}" for a, b in itertools.pairwise(lines)]
+    return any(want_text in x for x in (*lines, *spans))
 
 
 def load_boldness_cases() -> list[dict]:

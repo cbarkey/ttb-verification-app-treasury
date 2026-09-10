@@ -458,7 +458,6 @@ def evaluate(
             ("abv", "Alcohol content", app.alcohol_content),
             ("net_contents", "Net contents", app.net_contents),
             ("producer", "Producer name", app.applicant_name),
-            ("address", "Producer address", app.applicant_address),
             ("origin", "Country of origin", app.origin),
         ]
         return [
@@ -479,14 +478,6 @@ def evaluate(
     checks.append(
         _text_field_check("producer", "Producer name", app.applicant_name, pages,
                           display_only=False)
-    )
-    # The brief lists "name **and address** of bottler/producer" as one element,
-    # and the address is printed in the same bottler statement as the name — so
-    # it gets the same treatment: never display-only, since a sentence is where
-    # it lives.
-    checks.append(
-        _text_field_check("address", "Producer address", app.applicant_address,
-                          pages, display_only=False)
     )
     checks.append(
         _text_field_check("origin", "Country of origin", app.origin, pages,

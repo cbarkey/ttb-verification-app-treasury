@@ -468,7 +468,7 @@ rather than substituted, and the remaining 48 still calibrate the threshold.
 | Brand / class-type matching via the 4-tier normalization ladder | done |
 | Display admissibility so a fine-print brand string isn't a false match (design 3.2) | done |
 | ABV parsing across label phrasings; proof-vs-ABV (`proof == 2 × ABV`) consistency | done |
-| Producer **name and address** — the brief lists them as one element | done |
+| Producer name | done |
 | Net contents with unit normalization (mL / cL / L / fl oz / pt) | done |
 | Health warning W-1 presence, W-2 wording (two-band), W-3 capitalization | done |
 | W-4 boldness — confidence-gated auto-confirm against the statement's own regular text | done |
@@ -668,6 +668,13 @@ Stated rather than hidden — all of these are live behaviour today.
   only on `UNREADABLE`, never on a `FAIL`, because asking on a `FAIL` would let a model
   *downgrade a rejection to review* — the same power the cap exists to withhold, arriving
   through the back door.
+- **The producer's *address* is not verified, only the name.** The brief lists them as one
+  element. The address is accepted by the schema, the manifest and the API, and it is printed
+  on every fixture — but it sits at the end of a bottler statement that wraps, and where it
+  wraps depends on the font, so on some platforms `Key West,` and `FL` land on different OCR
+  lines. Matching across a line break is something the engine does for brands and would need
+  widening to handle a three-token address reliably. It was implemented, found to be
+  platform-dependent, and pulled rather than shipped half-working.
 - **W-4 auto-confirms only the confidently-bold case**; everything else is human review, and
   it never auto-FAILs. ~48% of clean same-family headers auto-decide.
 - **ABV is compared exactly**, near-misses (≤ 0.5%) routed to `REVIEW`. Per-commodity

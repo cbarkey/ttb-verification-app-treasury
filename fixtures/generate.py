@@ -263,17 +263,6 @@ class Case:
             "class_type": text_fact(self.class_type,
                                     self.label_class_type or self.class_type, front),
             "producer": text_fact(self.applicant_name, self.applicant_name, front),
-            # Printed only where the bottler statement this label actually
-            # renders contains it: a case with a custom producer line may name
-            # a different city than the application declared, which is a real
-            # mismatch and must read as `not_found`, not as a match.
-            "address": text_fact(
-                self.applicant_address,
-                self.applicant_address
-                if (self.applicant_address
-                    and self.applicant_address in self._fine_print)
-                else None,
-                front, self._fine_print),
             "origin": text_fact(
                 self.origin,
                 self.origin if (self.label_origin_text and self.origin

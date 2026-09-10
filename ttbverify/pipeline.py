@@ -30,7 +30,6 @@ _VISION_FIELDS = {
     "brand": "brand_name",
     "class_type": "class_type",
     "producer": "applicant_name",
-    "address": "applicant_address",
     "origin": "origin",
     "abv": "alcohol_content",
     "net_contents": "net_contents",
