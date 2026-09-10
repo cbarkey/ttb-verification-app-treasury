@@ -142,10 +142,30 @@ def verify_batch(
 
 
 def _load_images(app: LabelApplication) -> dict[int, Image.Image]:
+    """Decode the images into memory, releasing the file handles deterministically.
+
+    `Image.open` is lazy: it holds the file open until something forces a decode.
+    Whether that happens depends on the label — the W-4 check crops the warning
+    block, which loads the image, but on a label where the warning is never
+    located nothing does. The handle is then released whenever the object is
+    collected, which under CPython refcounting is usually immediately on return,
+    and "usually" is doing real work in that sentence. The service verifies
+    inside a `TemporaryDirectory`, and on Windows an open handle makes the
+    *cleanup* fail, which surfaces as a 500 a long way from the cause.
+
+    So decode eagerly and copy out: the handle is closed before this returns,
+    on every path, regardless of what the rest of the pipeline happens to touch.
+    Costs a few MB per label for one request.
+
+    (Honest note: this was written after a 500 of exactly that shape, but the
+    leak could not be reproduced in isolation — see the tests. Treat it as
+    removing a class of timing-dependent failure, not as a diagnosed fix.)
+    """
     out: dict[int, Image.Image] = {}
     for i, ref in enumerate(app.images):
         try:
-            out[i] = Image.open(ref.path)
+            with Image.open(ref.path) as im:
+                out[i] = im.copy()
         except OSError:
             continue
     return out

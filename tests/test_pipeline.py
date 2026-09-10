@@ -47,6 +47,44 @@ class TestDegradation:
         assert "ocr" in result.stage_ms
 
 
+class TestNoLeakedFileHandles:
+    """`_load_images` must not still be holding the files when it returns.
+
+    The service verifies inside a `TemporaryDirectory`, and on Windows an open
+    handle makes the *cleanup* fail — the request 500s a long way from the
+    cause. `Image.open` is lazy, so whether the handle is released depends on
+    whether some later check happens to crop the image, and otherwise on when
+    the object is collected.
+
+    **This is not a regression test.** A 500 of this shape did occur, but it
+    could not be reproduced against the lazy version in isolation — CPython
+    refcounting closes the file promptly enough that a synthetic run passes
+    either way. What this pins is the weaker, honest property: the handle is
+    closed before the function returns, by construction rather than by timing.
+    """
+
+    def test_images_are_detached_from_their_files(self, a_real_image):
+        from ttbverify.pipeline import _load_images
+
+        for image in _load_images(_app([{"path": a_real_image}])).values():
+            assert getattr(image, "fp", None) is None
+
+    def test_the_image_is_still_usable_after_the_file_is_gone(self, tmp_path):
+        """Detaching has to mean *decoded*, not *closed and broken* — the W-4
+        crop still needs real pixels later in the pipeline."""
+        from PIL import Image
+
+        from ttbverify.pipeline import _load_images
+
+        path = tmp_path / "label.png"
+        Image.new("RGB", (400, 300), "white").save(path)
+        images = _load_images(_app([{"path": str(path)}]))
+        path.unlink()
+
+        assert images[0].size == (400, 300)
+        assert images[0].crop((0, 0, 10, 10)).getpixel((0, 0)) == (255, 255, 255)
+
+
 class TestVisionFallbackIsCappedAtReview:
     """CLAUDE.md 2.9: a model-sourced reading can only ever produce REVIEW.
 
