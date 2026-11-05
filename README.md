@@ -1,6 +1,7 @@
 # TTB Label Verification
 
-**[▶ Try it: ttb-verification-app-treasury.onrender.com](https://ttb-verification-app-treasury.onrender.com/)**
+> This was hosted on Render while the assignment was being reviewed. It isn't live anymore,
+> but everything below still runs locally (see [Setup](#setup)).
 
 An agent uploads a label image and the values declared on the application. The tool reads the
 label, compares the two, and returns a per-field verdict with the evidence behind it —
@@ -197,7 +198,7 @@ buried in the interview transcripts as anecdotes. Each of these is implemented a
 | **Frontend** | React 18 · Vite · Tailwind v4 · TypeScript |
 | **Tests** | pytest — 327 tests, none of which touch the network |
 | **Lint** | ruff, config in `pyproject.toml`, gated in CI |
-| **Delivery** | One Docker image (frontend + API), GitHub Actions, deployed on Render |
+| **Delivery** | One Docker image (frontend + API), GitHub Actions; previously deployed on Render |
 
 Deliberately **no** third-party fuzzy-matching library: `normalize.py` has a ~30-line normalized
 Levenshtein ratio. Dependency-free keeps the no-egress story honest and the unit tests in
@@ -238,7 +239,7 @@ review rate                     3.3%         (reported, not gated; 9.9% before W
 ```
 
 Realistic corpus (styled and photographed labels): p95 **962 ms**, 0 false approvals.
-On the deployed instance, a two-image label round-trips in **~1.4 s** including network.
+On the (since retired) deployed instance, a two-image label round-tripped in **~1.4 s** including network.
 
 ## Future work
 
